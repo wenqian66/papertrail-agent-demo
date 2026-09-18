@@ -1,0 +1,620 @@
+{
+  "document": "2901318.2901341.pdf",
+  "display_name": "2901318.2901341.pdf",
+  "pages": 16,
+  "summary": "This paper studies the usage and importance of Linux APIs, including system calls, pseudo-files, and libc functions, across all applications and libraries in the Ubuntu 15.04 distribution. To achieve this, the authors combine static analysis of API usage with survey data to weight the relative importance of applications to end users. The study proposes metrics to evaluate the maturity of prototype systems or compatibility layers. It reports that many APIs are rarely used, some security-relevant API changes have seen slow adoption, and numerous libc interfaces are effectively unused, suggesting opportunities to improve system security and efficiency.",
+  "summary_kind": null,
+  "sections": [
+    {
+      "title": "A Study of Modern Linux API Usage and Compatibility: What to Support When You\u2019re Supporting",
+      "page_start": 0,
+      "page_end": 0,
+      "highlights": []
+    },
+    {
+      "title": "Abstract",
+      "page_start": 1,
+      "page_end": 1,
+      "highlights": [
+        {
+          "quote": "Our metrics are designed for evaluating the relative maturity of a prototype system or compatibility layer, and this paper focuses on compatibility with Linux applications.",
+          "page": 1,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explains why the solution is believed to be useful (evaluating maturity and compatibility).",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "This study uses a combination of static analysis to understand API usage and survey data to weight the relative importance of applications to end users.",
+          "page": 1,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes how the solution is achieved/implemented using static analysis and survey data.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "1. Introduction",
+      "page_start": 1,
+      "page_end": 2,
+      "highlights": []
+    },
+    {
+      "title": "2. Some APIs Are More Equal Than Others",
+      "page_start": 2,
+      "page_end": 3,
+      "highlights": [
+        {
+          "quote": "To answer these questions, we must consider both the difference in API usage among applications, and the popularity of applications among end-users. We measure the former by analyzing application binaries, and determine the latter from installation statistics collected by Debian and Ubuntu",
+          "page": 2,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes how the solution is achieved by combining static analysis of binaries with installation statistics.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "2.1 API Importance: A Metric for Individual APIs",
+      "page_start": 3,
+      "page_end": 3,
+      "highlights": [
+        {
+          "quote": "we define API importance as the probability that an API will be indis- pensable to at least one application on a randomly selected installation.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Defines the core proposed metric (API importance) used to solve the research problem.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "We want a metric that decreases as one identi- fies and removes instances of a deprecated API, and a metric that will remain high for an indispensable API, even if only one ubiquitous application uses the API.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides the justification for why this specific metric is designed this way and why it is expected to be effective.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "Definition: API Importance.",
+      "page_start": 3,
+      "page_end": 3,
+      "highlights": [
+        {
+          "quote": "Definition: API Importance. For a given API, the probability that an installation in- cludes at least one application requiring the given API.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Introduces the 'API Importance' metric as a way to quantify the necessity of an API.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Intuitively, if an API is used by no packages or installations, the API importance will be zero, causing no negative effects if removed.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides the justification for why this metric is useful for determining if an API can be removed without negative effects.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "2.2 Weighted Completeness: A System-Wide Metric",
+      "page_start": 3,
+      "page_end": 3,
+      "highlights": [
+        {
+          "quote": "We also measure compatibility at the granularity of an OS, which we call weighted completeness.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Introduces 'weighted completeness' as the proposed metric for measuring OS compatibility.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Weighted complete- ness is the fraction of applications that are likely to work, weighted by the likelihood that these applications will be in- stalled on a system.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes how the proposed solution (weighted completeness) is constructed/defined.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The goal of weighted completeness is to measure the degree to which a new OS prototype or translation layer is compatible with a baseline OS.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explains the purpose and intended utility of the proposed metric.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "Definition: Weighted Completeness.",
+      "page_start": 3,
+      "page_end": 3,
+      "highlights": [
+        {
+          "quote": "Weighted Completeness. For a target system, the fraction of applications sup- ported, weighted by the popularity of these applications.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Defines the proposed system-wide metric for measuring API support.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The methodology for measuring the weighted complete- ness of a target system\u2019s API subset is summarized as fol- lows: 1. Start with a list of supported APIs of the target system, either identified from the system\u2019s source, or as provided by the developers of the system. 2. Based on the API footprints of packages, the framework generates a list of supported and unsupported packages. 3. The framework then considers the dependencies of pack- ages. If a supported package depends on an unsupported package, both packages are marked as unsupported. 4. Finally, the framework weighs the list of supported pack- ages based on package installation statistics.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes how the proposed solution (Weighted Completeness) is implemented/achieved.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "this model of a typical installation is useful in reducing the metric to a single number",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides a justification for why this approach is useful (reducing the metric to a single number).",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "2.3 Data Collection via Static Analysis",
+      "page_start": 3,
+      "page_end": 4,
+      "highlights": [
+        {
+          "quote": "We use static binary analysis to identify the system call footprint of a binary.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes the technical method used to identify system call footprints.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "This approach has the advantages of not requiring source code or test cases.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides the justification for why static binary analysis is used/better than alternatives requiring source or tests.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Dynamic system call logging using a tool like strace is simpler, but can miss input-dependent behavior.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explains why the proposed static analysis is superior to dynamic logging (strace).",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Our static analysis identifies system call instructions and constructs a whole-program call graph.",
+          "page": 3,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes how the solution is implemented/achieved.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "2.4 Limitations",
+      "page_start": 4,
+      "page_end": 4,
+      "highlights": []
+    },
+    {
+      "title": "3. A Study of Modern Linux API Usage",
+      "page_start": 4,
+      "page_end": 6,
+      "highlights": []
+    },
+    {
+      "title": "3.2 From \u201cHello World\u201d to Qemu",
+      "page_start": 6,
+      "page_end": 7,
+      "highlights": [
+        {
+          "quote": "A goal of weighted completeness is to help guide the process of developing new system prototypes.",
+          "page": 6,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "States the goal/purpose of the proposed 'weighted completeness' metric in the context of system development.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Figure 3 shows the optimal path of adding system calls to a prototype system, using a simple, greedy strategy of imple- menting the N-most important APIs, which in turns maxi- mizes weighted completeness.",
+          "page": 6,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes how the solution (weighted completeness) is used to determine an optimal implementation path via a greedy strategy.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "3.3 Vectored System Call Opcodes",
+      "page_start": 7,
+      "page_end": 7,
+      "highlights": []
+    },
+    {
+      "title": "3.4 Pseudo-Files and Devices",
+      "page_start": 7,
+      "page_end": 8,
+      "highlights": []
+    },
+    {
+      "title": "3.5 Reorganizing System Library APIs",
+      "page_start": 8,
+      "page_end": 9,
+      "highlights": [
+        {
+          "quote": "Further decomposition is also possible, such as placing APIs that are commonly accessed by the same application into the same sub-library.",
+          "page": 9,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Discusses how the solution can be further designed/implemented for better efficiency.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "4. Linux Systems and Emulation Layers",
+      "page_start": 9,
+      "page_end": 9,
+      "highlights": []
+    },
+    {
+      "title": "4.1 Weighted Completeness of Linux Systems",
+      "page_start": 9,
+      "page_end": 10,
+      "highlights": []
+    },
+    {
+      "title": "4.2 Weighted Completeness of Libc",
+      "page_start": 10,
+      "page_end": 10,
+      "highlights": []
+    },
+    {
+      "title": "5. Unweighted API Importance",
+      "page_start": 10,
+      "page_end": 12,
+      "highlights": [
+        {
+          "quote": "This section observes trends for APIs with multiple variants, using an additional unweighted API importance metric.",
+          "page": 10,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Introduces the specific technical solution (unweighted API importance metric) used to observe trends for APIs with multiple variants.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "We remove the weighting by installation frequency to focus on trends in developer behavior.",
+          "page": 10,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explains why this solution is believed to work/be better: it removes installation frequency bias to focus on developer behavior.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Definition: Unweighted API importance. For a given API, the probability an application (package) uses that API, irrespective of probability of installation.",
+          "page": 10,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides the definition and theoretical construction of the proposed metric.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "6. Implications for System Developers",
+      "page_start": 12,
+      "page_end": 12,
+      "highlights": []
+    },
+    {
+      "title": "7. Implementation Details",
+      "page_start": 12,
+      "page_end": 13,
+      "highlights": [
+        {
+          "quote": "Our analysis is based on disassembling binaries inside each application package, using the standard objdump tool.",
+          "page": 12,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes the technical approach used for the analysis framework.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "This approach eliminates the need for source or recompila- tion, and can handle closed-source binaries.",
+          "page": 12,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides the justification for why this specific approach (disassembling binaries) is effective/better than others.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "We implement a simple call-graph analysis to detect system calls reach- able from the binary entry point (e entry in ELF head- ers).",
+          "page": 12,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes a key component of the implementation to achieve the research goal.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Our call-graph analysis allows us to only select system calls that are actually used by the application, not all the sys- tem calls that appear in libc.",
+          "page": 12,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explains why the call-graph analysis is a superior method for identifying used system calls.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Our analysis takes the following steps: \u2022 For a target executable or a library, generate a call graph of internal function usage. \u2022 For each library function that the executable relies on, identify the code in the library that is reachable from each entry point called by the executable. \u2022 For each library function that calls another library call, recursively trace the call graph and aggregate the results.",
+          "page": 12,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Details the step-by-step implementation of the proposed solution.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "We insert all raw data into a Postgresql database, and use recursive SQL queries to generate the results.",
+          "page": 13,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes the data management and result generation part of the implementation.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Our implementation is summarized in Table 12.",
+          "page": 13,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Points to a summary of the implementation details.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "8. Related Work",
+      "page_start": 13,
+      "page_end": 14,
+      "highlights": [
+        {
+          "quote": "Our paper contributes complimentary insights, such as a metric and incremental path for completeness of an emulation layer, as well as analysis of the importance of less commonly-analyzed APIs, such as pseudo-files under /proc.",
+          "page": 13,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes the contributions of the paper, including a metric for completeness of an emulation layer.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "This study is unique in using this in- formation to infer the relative importance of of system APIs to end users, based on frequency of application installation.",
+          "page": 13,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explains the unique approach/idea of using installation frequency to infer API importance.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "this paper proposes a metric for relative completeness of a prototype system.",
+          "page": 13,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explicitly states the proposal of a metric for relative completeness.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Binary static analysis, as this paper uses",
+          "page": 13,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Identifies the technical method (binary static analysis) used to achieve the results.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "9. Conclusion",
+      "page_start": 14,
+      "page_end": 14,
+      "highlights": []
+    },
+    {
+      "title": "Acknowledgments",
+      "page_start": 14,
+      "page_end": 14,
+      "highlights": []
+    },
+    {
+      "title": "Appendix A Formal Definitions",
+      "page_start": 0,
+      "page_end": 0,
+      "highlights": []
+    },
+    {
+      "title": "A.1 API Importance",
+      "page_start": 14,
+      "page_end": 14,
+      "highlights": [
+        {
+          "quote": "Importance(api) = Pr{Dependentapi Inst\u0338 = \u2205} = 1 \u2212Pr{\u2200pkg \u2208Dependentapi, pkg /\u2208Inst} = 1 \u2212 pkg\u2208Dependentapi Pr{pkg /\u2208Inst} = 1 \u2212 pkg\u2208Dependentapi (1 \u2212# of installations including pkg total # of installations )",
+          "page": 14,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides the formal mathematical implementation of the proposed API Importance metric.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "A.2 Weighted Completeness \u2014 A System-Wide Metric",
+      "page_start": 14,
+      "page_end": 14,
+      "highlights": [
+        {
+          "quote": "Definition: Weighted Completeness. For a target system, the fraction of applications sup- ported, weighted by the popularity of these applications.",
+          "page": 14,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Defines the proposed metric 'Weighted Completeness' used to evaluate relative compatibility.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Using weighted completeness, one can estimate the fraction of packages in an installation that end-users can expect a tar- get system to support.",
+          "page": 14,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explains why the solution is believed to work/be useful: it provides an estimate of expected package support for end-users.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "WeightedCompleteness(APISupported) = E( |PkgSupported Inst| |Inst| ) where E(X) is the expected value of X.",
+          "page": 14,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides the theoretical formulation/implementation of how the metric is achieved.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Because we do not know which packages are installed together, except in the presence of explicit dependencies, we assume package installation events are independent. Thus, the approximated value of weighted completeness is: E(|PkgSupported Inst|) E(|Inst|) \u223c pkg\u2208PkgSupported(# of installations including pkg total # of installations ) pkg\u2208Pkgall (# of installations including pkg total # of installations )",
+          "page": 14,
+          "run_id": "21735a50b279",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes the implementation detail and the assumption (independence) used to make the solution achievable.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "References",
+      "page_start": 15,
+      "page_end": 16,
+      "highlights": []
+    }
+  ]
+}

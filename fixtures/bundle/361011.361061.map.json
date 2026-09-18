@@ -1,0 +1,1546 @@
+{
+  "document": "361011.361061.pdf",
+  "display_name": "361011.361061.pdf",
+  "pages": 11,
+  "summary": null,
+  "summary_kind": null,
+  "sections": [
+    {
+      "title": "The UNIX Time- Sharing System",
+      "page_start": 1,
+      "page_end": 1,
+      "highlights": [
+        {
+          "quote": "UNIX is a general-purpose, multi-user, interactive operating system for the Digital Equipment Corporation PDP-11/40 and 11/45 computers.",
+          "page": 1,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the core technical solution: a general-purpose, multi-user, interactive operating system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "It offers a number of features seldom found even in larger operating systems, including: (1) a hierarchical file system incorporating demountable volumes; (2) compatible file, device, and inter-process I/O; (3) the ability to initiate asynchronous processes; (4) system command language selectable on a per-user basis; and (5) over 100 subsystems including a dozen languages.",
+          "page": 1,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains the specific technical features that make the solution superior to existing (larger) operating systems.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "UNIX is a general-purpose, multi-user, interactive operating system for the Digital Equipment Corporation PDP-11/40 and 11/45 computers.",
+          "page": 1,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Identifies the creation of the UNIX operating system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "It offers a number of features seldom found even in larger operating systems, including: (1) a hierarchical file system incorporating demountable volumes; (2) compatible file, device, and inter-process I/O; (3) the ability to initiate asynchronous processes; (4) system command language selectable on a per-user basis; and (5) over 100 subsystems including a dozen languages.",
+          "page": 1,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Lists the specific technical advancements and features provided by the system.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "1. Introduction",
+      "page_start": 1,
+      "page_end": 1,
+      "highlights": [
+        {
+          "quote": "many of the differences between it and older UNIX systems result from redesign of features found to be deficient or lacking",
+          "page": 1,
+          "run_id": "aad43fe87d48",
+          "run_name": "Research Motivation and Problem Statement",
+          "version": 1,
+          "color": "#fbe3ab",
+          "note": "Indicates that previous versions of the system had deficiencies that needed to be addressed.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "demonstrate that a powerful operating system for interactive use need not be expensive either in equipment or in human effort",
+          "page": 1,
+          "run_id": "aad43fe87d48",
+          "run_name": "Research Motivation and Problem Statement",
+          "version": 1,
+          "color": "#fbe3ab",
+          "note": "Describes the 'people problem' or desired real-world benefit: providing a powerful interactive OS without high costs in hardware or labor.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "demonstrate that a powerful operating system for interactive use need not be expensive either in equipment or in human effort",
+          "page": 1,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "States the core goal/achievement of the system: providing a powerful interactive OS that is inexpensive in terms of hardware and labor.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the most important characteristics of the system are its simplicity, elegance, and ease of use",
+          "page": 1,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the intended design philosophy and the reasons why the solution is believed to be effective/superior.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Perhaps the most important achievement of UNIX is to demonstrate that a powerful operating system for interactive use need not be expensive either in equipment or in human effort: UNIX can run on hardware costing as little as $40,000, and less than two man- years were spent on the main system software.",
+          "page": 1,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides concrete evidence of the system's value in terms of low hardware cost and low human effort for development.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the most important characteristics of the system are its simplicity, elegance, and ease of use",
+          "page": 1,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Identifies the perceived benefits and value of the system's design.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the system is totally self-supporting. All UNIx software is maintained under UNIX; likewise, UNIX documents are generated and formatted by the UNIX editor and text formatting program.",
+          "page": 1,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Demonstrates the effectiveness and utility of the system by showing it can maintain itself and its own documentation.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "This paper describes only the ppp-11/40 and /45 [1] system",
+          "page": 1,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "The authors are providing a description of the specific version of the UNIX system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Perhaps the most important achievement of UNIX is to demonstrate that a powerful operating system for interactive use need not be expensive either in equipment or in human effort",
+          "page": 1,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Claims a theoretical/practical achievement regarding the cost and effort of building a powerful OS.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the major programs available under UNIX are: assembler, text editor based on QED [2], linking loader, symbolic debugger, compiler for a language resembling BceL [3] with types and structures (C), interpreter for a dialect of BASIC, text formatting program, Fortran compiler, Snobol inter- preter, top-down compiler-compiler (TMG) [4], bot- tom-up compiler-compiler (YAcc), form letter generator, macro processor (M6) [5], and permuted index program.",
+          "page": 1,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Lists the software tools created and provided as part of the system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "All of these programs were written locally.",
+          "page": 1,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Explicitly claims that the listed software tools are original contributions created by the authors/their team.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "2. Hardware and Software Environment",
+      "page_start": 1,
+      "page_end": 2,
+      "highlights": [
+        {
+          "quote": "the above-mentioned C language [6]. Early versions of the Operating system were written in assembly language, but during the summer of 1973, it was rewritten in C.",
+          "page": 2,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the technical shift in implementation from assembly to C.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "it was rewritten in C",
+          "page": 2,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes the improvement of rewriting the operating system in the C language.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "3. The File System",
+      "page_start": 2,
+      "page_end": 2,
+      "highlights": []
+    },
+    {
+      "title": "3.1 Ordinary Files",
+      "page_start": 2,
+      "page_end": 2,
+      "highlights": []
+    },
+    {
+      "title": "3.2 Directories",
+      "page_start": 2,
+      "page_end": 3,
+      "highlights": [
+        {
+          "quote": "UNIX differs from other systems in which linking is permitted in that all links to a file have equal status. That is, a file does not exist within a particular directory; the directory entry for a file consists merely of its name and a pointer to the information actually describing the file.",
+          "page": 2,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the specific technical solution for file linking and how it differs from other systems.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The reason for this is to simplify the writing of programs which visit subtrees of the directory structure, and more im- portant, to avoid the separation of portions of the hierarchy. If arbitrary links to directories were per- mitted, it would be quite difficult to detect when the last connection from the root to a directory was severed.",
+          "page": 2,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Provides the theoretical justification for why the rooted tree constraint is superior to allowing arbitrary directory links.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "UNIX differs from other systems in which linking is permitted in that all links to a file have equal status.",
+          "page": 2,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes a specific design difference/improvement in the UNIX file system regarding linking.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "3.3 Special Files",
+      "page_start": 3,
+      "page_end": 3,
+      "highlights": [
+        {
+          "quote": "Each 1/o device supported by UNIX is associated with at least one such file. Special files are read and written just like ordinary disk files, but requests to read or write result in activation of the associated device.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the technical solution of using special files to represent I/O devices.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "There is a threefold advantage in treating 1/0 devices this way: file and device 1/0 are as similar as possible; file and device names have the same syntax and mean- ing, so that a program expecting a file name as a param- eter can be passed a device name; finally, special files are subject to the same protection mechanism as regular files.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains why this solution is believed to be superior/advantageous.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "There is a threefold advantage in treating 1/0 devices this way: file and device 1/0 are as similar as possible; file and device names have the same syntax and mean- ing, so that a program expecting a file name as a param- eter can be passed a device name; finally, special files are subject to the same protection mechanism as regular files.",
+          "page": 3,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Outlines the specific logical arguments and benefits (uniformity, syntax consistency, and shared protection) that justify the design of special files.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Special files constitute the most unusual feature of the UNIX file system.",
+          "page": 3,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Identifies a unique feature/contribution of the UNIX file system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "There is a threefold advantage in treating 1/0 devices this way: file and device 1/0 are as similar as possible; file and device names have the same syntax and mean- ing, so that a program expecting a file name as a param- eter can be passed a device name; finally, special files are subject to the same protection mechanism as regular files.",
+          "page": 3,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes the theoretical and practical advantages provided by the implementation of special files.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "3.4 Removable File Systems",
+      "page_start": 3,
+      "page_end": 3,
+      "highlights": [
+        {
+          "quote": "There is a mount system request which has two arguments: the name of an existing ordinary file, and the name of a direct-access special file whose associated storage vol- ume (e.g. disk pack) should have the structure of an independent file system containing its own directory hierarchy.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the technical mechanism (mount system request) used to implement removable file systems.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The effect of mount is to cause references to the heretofore ordinary file to refer instead to the root directory of the file system on the removable volume. In effect, mount replaces a leaf of the hierarchy tree (the ordinary file) by a whole new subtree (the hierarchy stored on the removable volume).",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains how the solution works logically by replacing a leaf with a subtree.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "no link may exist between one file system hierarchy and another. This restriction is enforced so as to avoid the elaborate book- keeping which would otherwise be required to assure removal of the links when the removable volume is finally dismounted.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Provides the theoretical justification for a specific design constraint (no cross-hierarchy links) to ensure system viability.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "3.5 Protection",
+      "page_start": 3,
+      "page_end": 3,
+      "highlights": [
+        {
+          "quote": "Each user of the system is assigned a unique user identification number. When a file is created, it is marked with the user ID of its owner. Also given for new files is a set of seven protection bits.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the basic design of the protection system using user IDs and protection bits.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "If the seventh bit is on, the system will temporarily change the user identification of the current user to that of the creator of the file whenever the file is executed aS a program.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains the specific technical mechanism of the set-user-ID feature.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The set-user-ID feature provides for privileged pro- grams which may use files inaccessible to other users.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains why the set-user-ID solution is used and what it achieves (privileged access).",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "This mechanism is used to allow users to execute the care- fully written commands which call privileged system entries.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Further justifies the use of the mechanism for secure system entry calls.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "3.6 I/O Calls",
+      "page_start": 3,
+      "page_end": 4,
+      "highlights": [
+        {
+          "quote": "The system calls to do 1/0 are designed to eliminate the differences between the various devices and styles of access.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "States the core design goal/solution for the I/O system calls.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "There is no distinction between \u201c\u2018random\u201d and \u201csequential\u201d 1/0, nor is any logical record size imposed by the system.",
+          "page": 3,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the technical approach of removing distinctions between I/O styles to achieve the design goal.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "For each open file there is a pointer, maintained by the system, which indicates the next byte to be read or written.",
+          "page": 4,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains the mechanism (system-maintained pointer) used to implement sequential and random access.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Although it is possible for the contents of a file to become scrambled when two users write on it simultaneously, in practice, difficulties do not arise.",
+          "page": 4,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "The authors address a potential failure (scrambled files) and argue that in practice it is not a significant problem.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "We take the view that locks are neither necessary nor sufficient, in our environment, to prevent interference between users of the same file.",
+          "page": 4,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides a logical argument for the design choice of omitting user-visible locks.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the system has sufficient internal interlocks to maintain the logical consistency of the file system when two users engage simultaneously in such inconvenient activities as writing on the same file, creating files in the same directory, or deleting each other\u2019s open files.",
+          "page": 4,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Claims the system's internal design successfully maintains consistency during concurrent operations.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The system calls to do 1/0 are designed to eliminate the differences between the various devices and styles of access.",
+          "page": 3,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes the design goal and contribution of the system's I/O call architecture.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "4. Implementation of the File System",
+      "page_start": 4,
+      "page_end": 5,
+      "highlights": [
+        {
+          "quote": "In practice, this method of organizing the file system has proved quite reliable and easy to deal with.",
+          "page": 5,
+          "run_id": "aad43fe87d48",
+          "run_name": "Research Motivation and Problem Statement",
+          "version": 1,
+          "color": "#fbe3ab",
+          "note": "Describes a desired real-world benefit (reliability and ease of use) achieved by the chosen implementation.                           WARN: exactly the \"how\" that the FOCUS AGREEMENT explicitly warns against confusing with the \"why.\"",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "To the system itself, one of its strengths is the fact that each file has a short, unambiguous name which is related in a simple way to the protection, addressing, and other information needed to access the file.",
+          "page": 5,
+          "run_id": "aad43fe87d48",
+          "run_name": "Research Motivation and Problem Statement",
+          "version": 1,
+          "color": "#fbe3ab",
+          "note": "Explains the technical advantage of the i-list approach over other potential methods.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "It also permits a quite simple and rapid algorithm for checking the consistency of a file system",
+          "page": 5,
+          "run_id": "aad43fe87d48",
+          "run_name": "Research Motivation and Problem Statement",
+          "version": 1,
+          "color": "#fbe3ab",
+          "note": "Identifies a specific technical problem (file system consistency checking) that this design solves efficiently.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "a directory entry con- tains only a name for the associated file and a pointer to the file itself. This pointer is an integer called the i-number (for index number) of the file. When the file is accessed, its is used as an index into a system table (the i-/ist) stored in a known part of the device on which the directory resides. The entry thereby found (the file\u2019s i-node) contains the description of the file",
+          "page": 4,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the technical implementation of the file system using i-numbers and i-nodes.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The notion of the i-list is an unusual feature of UNIX. In practice, this method of organizing the file system has proved quite reliable and easy to deal with. To the system itself, one of its strengths is the fact that each file has a short, unambiguous name which is related in a simple way to the protection, addressing, and other information needed to access the file. It also permits a quite simple and rapid algorithm for checking the consistency of a file system",
+          "page": 5,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains why the i-list solution is believed to be superior (reliable, easy to deal with, simple consistency checking).",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "In practice, this method of organizing the file system has proved quite reliable and easy to deal with.",
+          "page": 5,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "The authors state that the i-list organization is reliable and easy to manage.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "To the system itself, one of its strengths is the fact that each file has a short, unambiguous name which is related in a simple way to the protection, addressing, and other information needed to access the file.",
+          "page": 5,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Identifies a specific strength of the system's design regarding file naming and access.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "It also permits a quite simple and rapid algorithm for checking the consistency of a file system",
+          "page": 5,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes a benefit of the i-list approach in terms of system consistency checks.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the notion of the i-list induces certain peculiarities not found in other file system organiza- tions. For example, there is the question of who is to be charged for the space a file occupies",
+          "page": 5,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Identifies a problem/peculiarity regarding space charging caused by the i-list design.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The notion of the i-list is an unusual feature of UNIX.",
+          "page": 5,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Identifies the i-list as a distinct and unusual feature/contribution of the UNIX system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "In practice, this method of organizing the file system has proved quite reliable and easy to deal with.",
+          "page": 5,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Claims the i-list method of organization is a reliable improvement/contribution to file system design.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "To the system itself, one of its strengths is the fact that each file has a short, unambiguous name which is related in a simple way to the protection, addressing, and other information needed to access the file.",
+          "page": 5,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes a specific strength/contribution of the system's design regarding file naming and access.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "It also permits a quite simple and rapid algorithm for checking the consistency of a file system",
+          "page": 5,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes a technical advantage/contribution enabled by the i-list structure.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "there is the question of who is to be charged for the space a file occupies, since all directory entries for a file have equal status.",
+          "page": 5,
+          "run_id": "10a5e449da11",
+          "run_name": "Future Research Directions",
+          "version": 1,
+          "color": "#d8b4fe",
+          "note": "Identifies an unresolved problem regarding space charging in a system with multiple links to a single file.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The simplest reasonably fair algorithm seems to be to spread the charges equally among users who have links to a file.",
+          "page": 5,
+          "run_id": "10a5e449da11",
+          "run_name": "Future Research Directions",
+          "version": 1,
+          "color": "#d8b4fe",
+          "note": "Suggests a potential future approach/algorithm to solve the charging issue.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The current version of UNIX avoids the issue by not charging any fees at all.",
+          "page": 5,
+          "run_id": "10a5e449da11",
+          "run_name": "Future Research Directions",
+          "version": 1,
+          "color": "#d8b4fe",
+          "note": "Acknowledges a current limitation/omission in the system that implies a need for a future implementation of a charging system.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "4.1 Efficiency of the File System",
+      "page_start": 6,
+      "page_end": 6,
+      "highlights": [
+        {
+          "quote": "timings were made of the assembly of a 7621-line program",
+          "page": 6,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes the experiment used to measure the efficiency of the file system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the total clock time was 35.9 sec, for a rate of 212 lines per sec",
+          "page": 6,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides concrete performance metrics for the assembly process.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The time was divided as follows: 63.5 percent assembler execution time, 16.5 percent system overhead, 20.0 percent disk wait time",
+          "page": 6,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides a detailed breakdown of system performance and overhead.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "we are generally satisfied with the overall performance of the system",
+          "page": 6,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "The authors' qualitative evaluation of the system's effectiveness based on the results.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "5. Processes and Images",
+      "page_start": 6,
+      "page_end": 6,
+      "highlights": []
+    },
+    {
+      "title": "5.1 Processes",
+      "page_start": 6,
+      "page_end": 6,
+      "highlights": [
+        {
+          "quote": "a new process can come into existence only by use of the fork system call: processid = fork(label)",
+          "page": 6,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the specific technical mechanism (the fork system call) used for process creation in the system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "When fork is executed by a process, it splits into two independently executing processes. The two processes have independent copies of the original core image, and share any open files.",
+          "page": 6,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains how the proposed solution (fork) is implemented and how it functions technically.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "5.2 Pipes",
+      "page_start": 6,
+      "page_end": 6,
+      "highlights": [
+        {
+          "quote": "Processes may communicate with related processes using the same system read and write calls that are used for file system 1/0.",
+          "page": 6,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the core idea of using standard I/O calls for interprocess communication.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The call filep = pipe( ) returns a file descriptor filep and creates an interprocess channel called a pipe.",
+          "page": 6,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains the technical implementation/mechanism of the pipe.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "This channel, like other open files, is passed from parent to child process in the image by the fork call.",
+          "page": 6,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes how the solution is achieved through process inheritance.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "A read using a pipe file descriptor waits until another process writes using the file descriptor for the same pipe. At this point, data are passed between the images of the two processes.",
+          "page": 6,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains the operational logic of how the pipe facilitates communication.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Neither process need know that a pipe, rather than an ordinary file, is in- volved.",
+          "page": 6,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Provides the theoretical justification for the design (transparency/uniformity with the file system).",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "interprocess communication via pipes is a quite valuable tool",
+          "page": 6,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "The authors explicitly state that pipes are a valuable tool for interprocess communication.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "it is not a completely general mechanism since the pipe must be set up by a common ancestor of the processes involved",
+          "page": 6,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "The authors identify a limitation of the pipe mechanism regarding process ancestry.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The call filep = pipe( ) returns a file descriptor filep and creates an interprocess channel called a pipe.",
+          "page": 6,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes the creation of a pipe as a mechanism for interprocess communication.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "interprocess communication via pipes is a quite valuable tool",
+          "page": 6,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Identifies pipes as a valuable tool for communication between processes.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "it is not a completely general mechanism since the pipe must be set up by a common ancestor of the processes involved",
+          "page": 6,
+          "run_id": "10a5e449da11",
+          "run_name": "Future Research Directions",
+          "version": 1,
+          "color": "#d8b4fe",
+          "note": "Identifies a limitation of the current pipe mechanism, implying a need for a more general interprocess communication method.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "5.3 Execution of Programs",
+      "page_start": 6,
+      "page_end": 6,
+      "highlights": []
+    },
+    {
+      "title": "5.4 Process Synchronization",
+      "page_start": 6,
+      "page_end": 6,
+      "highlights": []
+    },
+    {
+      "title": "5.5 Termination",
+      "page_start": 6,
+      "page_end": 7,
+      "highlights": []
+    },
+    {
+      "title": "6. The Shell",
+      "page_start": 7,
+      "page_end": 7,
+      "highlights": [
+        {
+          "quote": "The Shell is a command line interpreter: it reads lines typed by the user and interprets them as requests to execute other programs.",
+          "page": 7,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the core function and nature of the Shell as the proposed interface for user communication with UNIX.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "6.1 Standard 1/0",
+      "page_start": 7,
+      "page_end": 7,
+      "highlights": []
+    },
+    {
+      "title": "6.2 Filters",
+      "page_start": 7,
+      "page_end": 7,
+      "highlights": [
+        {
+          "quote": "This process could have been carried out more clumsily by Is )temp1 pr \u20142 (temp1 )temp2 opr (temp2 followed by removal of the temporary files.",
+          "page": 7,
+          "run_id": "aad43fe87d48",
+          "run_name": "Research Motivation and Problem Statement",
+          "version": 1,
+          "color": "#fbe3ab",
+          "note": "Describes a clumsy previous/alternative method (using temporary files) that the current system improves upon.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Actually it would be surprising, and in fact unwise for efficiency reasons, to expect authors of commands such as /s to provide such a wide variety of output options.",
+          "page": 7,
+          "run_id": "aad43fe87d48",
+          "run_name": "Research Motivation and Problem Statement",
+          "version": 1,
+          "color": "#fbe3ab",
+          "note": "Explains the technical/practical reason why the alternative solution (adding options to every command) is inadequate.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "An extension of the standard 1/o notion is used to direct output from one command to the input of another.",
+          "page": 7,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the core technical solution for handling data flow between commands.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "A sequence of commands separated by vertical bars causes the Shell to execute all the commands simul- taneously and to arrange that the standard output of each command be delivered to the standard input of the next command in the sequence.",
+          "page": 7,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains the mechanism (vertical bars and simultaneous execution) used to implement the solution.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Actually it would be surprising, and in fact unwise for efficiency reasons, to expect authors of commands such as /s to provide such a wide variety of output options.",
+          "page": 7,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Provides the theoretical justification for why this filter-based approach is superior to building options into individual commands.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "This process could have been carried out more clumsily by Is )temp1 pr \u20142 (temp1 )temp2 opr (temp2 followed by removal of the temporary files.",
+          "page": 7,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Contrasts the proposed filter system with a more cumbersome manual process using temporary files, demonstrating efficiency.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Actually it would be surprising, and in fact unwise for efficiency reasons, to expect authors of commands such as /s to provide such a wide variety of output options.",
+          "page": 7,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides a logical argument for why the filter design is more efficient and practical for developers.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "6.3 Command Separators: Multitasking",
+      "page_start": 7,
+      "page_end": 8,
+      "highlights": [
+        {
+          "quote": "Another feature provided by the Shell is relatively Straightforward. Commands need not be on different lines; instead they may be separated by semicolons.",
+          "page": 7,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes a feature of the Shell (command separators) provided by the authors.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "If a command is followed by \u201c&\u201d, the Shell will not wait for the command to finish before prompting again; instead, it is ready immediately to accept a new command.",
+          "page": 8,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes the multitasking/background process feature provided by the Shell.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "6.4 The Shell as a Command: Command files",
+      "page_start": 8,
+      "page_end": 8,
+      "highlights": []
+    },
+    {
+      "title": "6.5 Implementation of the Shell",
+      "page_start": 8,
+      "page_end": 9,
+      "highlights": [
+        {
+          "quote": "The Shell analyzes the command line, putting the arguments in a form appropriate for execute. Then fork is called. The child process, whose code of course is still that of the Shell, attempts to perform an execute with the appropriate arguments. If successful, this will bring in and start execution of the program whose name was given. Meanwhile, the other process resulting from the fork, which is the parent process, waits for the child process to die.",
+          "page": 8,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the core mechanism of how the Shell implements command execution using fork and execute.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "whenever a command line contains \u201c&\u201d\u2019, the Shell merely refrains from waiting for the process which it created to execute the command.",
+          "page": 8,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains the specific implementation for background processes.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "When an argument with \u2018(\u201d or \u2018)\u2019\u2019 is given however, the offspring process, just before it performs execute, makes the standard 1/o file descriptor O or 1| respectively refer to the named file.",
+          "page": 8,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the implementation of standard I/O redirection.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Filters are straightforward extensions of standard 1/o redirection with pipes used instead of files.",
+          "page": 8,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains how filters are implemented as an extension of I/O redirection.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "6.6 Initialization",
+      "page_start": 9,
+      "page_end": 9,
+      "highlights": []
+    },
+    {
+      "title": "6.7 Other Programs as Shell",
+      "page_start": 9,
+      "page_end": 9,
+      "highlights": []
+    },
+    {
+      "title": "7. Traps",
+      "page_start": 9,
+      "page_end": 9,
+      "highlights": []
+    },
+    {
+      "title": "8. Perspective",
+      "page_start": 9,
+      "page_end": 10,
+      "highlights": [
+        {
+          "quote": "Our goals throughout the effort, when articulated at all, have always concerned themselves with building a comfort- able relationship with the machine and with exploring ideas and inventions in operating systems.",
+          "page": 10,
+          "run_id": "aad43fe87d48",
+          "run_name": "Research Motivation and Problem Statement",
+          "version": 1,
+          "color": "#fbe3ab",
+          "note": "States the overarching goals/motivations of the project.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "we naturally designed the system to make it easy to write, test, and run programs.",
+          "page": 10,
+          "run_id": "aad43fe87d48",
+          "run_name": "Research Motivation and Problem Statement",
+          "version": 1,
+          "color": "#fbe3ab",
+          "note": "Identifies a specific motivation based on the needs of the designers as programmers.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "we naturally designed the system to make it easy to write, test, and run programs.",
+          "page": 10,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes a core design objective regarding programming convenience.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the size constraint has encouraged not only economy but a certain elegance of design.",
+          "page": 10,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Explains how hardware constraints influenced the design philosophy toward economy and elegance.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The lowest possible interface level is designed to eliminate distinctions between the various devices and files and between direct and sequential access.",
+          "page": 10,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Provides technical detail on how the file system interface was implemented to achieve programming convenience.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Since the Shell operates as an ordinary, swappable user program, it consumes no wired-down space in the system proper, and it may be made as powerful as desired at little cost.",
+          "page": 10,
+          "run_id": "cdcd5b0b6706",
+          "run_name": "Proposed Solution and Rationale",
+          "version": 1,
+          "color": "#fda4af",
+          "note": "Describes the implementation of the Shell and why this design is efficient.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the success of UNIX is largely due to the fact that it was not designed to meet any predefined objectives.",
+          "page": 9,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "States the overall success of the system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "This essentially personal effort was sufficiently successful to gain the interest of the remaining author and others, and later to justify the acquisition of the ppp-11/20",
+          "page": 10,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes how the initial success led to further investment and hardware acquisition.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "UNIX had proved useful enough to persuade management to invest in the ppp-11/45.",
+          "page": 10,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Further evidence of the system's perceived value leading to management investment.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the size constraint has encouraged not only economy but a certain elegance of design. This may be a thinly disguised version of the \u201csalva- tion through suffering\u201d philosophy, but in our case it worked.",
+          "page": 10,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Argues that size constraints resulted in a successful, elegant design.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the system was able to, and did, maintain itself. This fact is more important than it might seem. If designers of a system are forced to use that system, they quickly become aware of its functional and superficial deficiencies and are strongly motivated to correct them",
+          "page": 10,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explains how the implementation of self-maintenance improved the system's quality.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The interface to the file system, for example, is extremely convenient from a programming standpoint.",
+          "page": 10,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Evaluates the benefit of the file system interface design.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Likewise, the process control scheme and command interface have proved both convenient and efficient.",
+          "page": 10,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Evaluates the effectiveness of the process control and command interface.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "set out to create a more hospitable environ- ment",
+          "page": 10,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes the initial goal of creating the UNIX environment.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "building a comfort- able relationship with the machine and with exploring ideas and inventions in operating systems",
+          "page": 10,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes the overarching goals and contributions to operating system exploration.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "designed the system to make it easy to write, test, and run programs",
+          "page": 10,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes a specific design contribution focused on programmer convenience.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The lowest possible interface level is designed to eliminate distinctions between the various devices and files and between direct and sequential access",
+          "page": 10,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes a specific technical contribution regarding the file system interface.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the process control scheme and command interface have proved both convenient and efficient",
+          "page": 10,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Claims contribution in the form of an efficient process control and command interface.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "the Shell operates as an ordinary, swappable user program",
+          "page": 10,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "Describes the novel implementation of the Shell as a user program.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "8.1 Influences",
+      "page_start": 10,
+      "page_end": 10,
+      "highlights": [
+        {
+          "quote": "The success of \u2018UNIX lies not so much in new inven- tions but rather in the full exploitation of a carefully selected set of fertile ideas, and especially in showing that they can be keys to the implementation of a small yet powerful operating system.",
+          "page": 10,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "The authors argue that the value of their solution lies in the effective exploitation of existing ideas to create a small yet powerful system.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "showing that they can be keys to the implementation of a small yet powerful operating system",
+          "page": 10,
+          "run_id": "bb3504bc7b1a",
+          "run_name": "Research Contributions",
+          "version": 1,
+          "color": "#93c5fd",
+          "note": "The authors claim their contribution is demonstrating how a set of ideas can be used to implement a small yet powerful operating system.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "9. Statistics",
+      "page_start": 10,
+      "page_end": 10,
+      "highlights": [
+        {
+          "quote": "The following statistics from UNIX are presented to show the scale of the system and to show how a system of this scale is used.",
+          "page": 10,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Explains that the statistics are used to evaluate the scale and usage of the system.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "9.1 Overall",
+      "page_start": 11,
+      "page_end": 11,
+      "highlights": [
+        {
+          "quote": "72 user population 14 maximum simultaneous users 300 directories 4400 files 34000 512-byte secondary storage blocks used",
+          "page": 11,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides concrete system statistics (user population, file counts, storage usage) that demonstrate the scale and implementation of the system in a real-world setting.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "9.2 Per day (24-hour day, 7-day week basis)",
+      "page_start": 11,
+      "page_end": 11,
+      "highlights": [
+        {
+          "quote": "There is a \u201cbackground\u201d process that runs at the lowest possible priority; it is used to soak up any idle CPU time.",
+          "page": 11,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Describes a specific implementation detail (background process) and its intended value (soaking up idle CPU time).",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "It has been used to produce a million-digit approximation to the constant e \u2014 2, and is now generating composite pseudoprimes (base 2).",
+          "page": 11,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides concrete examples of the system's capability and effectiveness in utilizing idle CPU time.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "1800 commands 4.3. CPU hours (aside from background) 70 connect hours 30 different users 75 logins",
+          "page": 11,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides statistical usage data as evidence of the system's operational scale and value.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "9.3 Command CPU Usage (cut off at 1%)",
+      "page_start": 11,
+      "page_end": 11,
+      "highlights": []
+    },
+    {
+      "title": "9.4 Command Accesses (cut off at 1%)",
+      "page_start": 11,
+      "page_end": 11,
+      "highlights": [
+        {
+          "quote": "15.3% editor 1.6% debugger 9.6% list directory 1.6% Shell (used as a command) 6.3% remove file 1.5% print disk availability 6.3% C compiler 1.4% list processes executing 6.0% concatenate/print file 1.4% assembler 6.0% users\u2019 programs 1.4% print arguments 3.3% list people logged on 1.2% copy file system 1.1% paginate and print file 3.2% rename/move file 1.1% print current date/time 3.1% file status 1.1% file system consistency 1.8% library maintainer check 1.8% document formatter 1.0% tape archive 1.6% execute another com- mand conditionally",
+          "page": 11,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides statistical data on command access frequencies, demonstrating how the system is actually used in practice.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "9.5 Reliability",
+      "page_start": 11,
+      "page_end": 11,
+      "highlights": [
+        {
+          "quote": "There has been one loss of a file system (one disk out of five) caused by software inability to cope with a hardware problem causing repeated power fail traps.",
+          "page": 11,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Identifies a specific failure involving file system loss due to software/hardware interaction.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "There is about one crash every other day; about two-thirds of them are caused by hardware-related dif- ficulties such as power dips and inexplicable processor interrupts to random locations. The remainder are software failures.",
+          "page": 11,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides frequency of system crashes and attributes them to hardware and software causes.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "The longest uninterrupted up time was about two weeks.",
+          "page": 11,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Reports a performance metric regarding system stability.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "Total up time has been about 98 percent of our 24-hour, 365-day schedule.",
+          "page": 11,
+          "run_id": "29dbb7a5a800",
+          "run_name": "Evaluation of Proposed Solution",
+          "version": 1,
+          "color": "#86efac",
+          "note": "Provides a concrete statistical metric for overall system reliability.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "There has been one loss of a file system (one disk out of five) caused by software inability to cope with a hardware problem causing repeated power fail traps.",
+          "page": 11,
+          "run_id": "10a5e449da11",
+          "run_name": "Future Research Directions",
+          "version": 1,
+          "color": "#d8b4fe",
+          "note": "Identifies a software limitation in handling specific hardware failures, implying a need for more robust error handling in future versions.",
+          "source": "pipeline",
+          "verdict": ""
+        },
+        {
+          "quote": "There is about one crash every other day; about two-thirds of them are caused by hardware-related dif- ficulties such as power dips and inexplicable processor interrupts to random locations. The remainder are software failures.",
+          "page": 11,
+          "run_id": "10a5e449da11",
+          "run_name": "Future Research Directions",
+          "version": 1,
+          "color": "#d8b4fe",
+          "note": "The frequency of crashes and the existence of software failures indicate a need for improved system stability and reliability.",
+          "source": "pipeline",
+          "verdict": ""
+        }
+      ]
+    },
+    {
+      "title": "References",
+      "page_start": 11,
+      "page_end": 11,
+      "highlights": []
+    }
+  ]
+}
