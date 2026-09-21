@@ -85,7 +85,8 @@ the result.
   `find_passages` only for supplementary evidence. The answer must cite
   supplied quotes with section and page. With no evidence it returns, "The
   paper does not directly address this."
-- Refine invokes `update_agreement` and displays its filtered highlight view.
+- Refine invokes `update_agreement`. With untagged highlights it reports that
+  no filtering was applied and leaves the raw exported pool unchanged.
 - Guide sends headings and current highlights, not the whole paper, then uses
   `find_passages` for a few missing links. It returns an ordered reading path
   plus a small suggested-question list.
@@ -125,39 +126,53 @@ add expertise in separate fields:
 Validation requires `focus_raw` to match the input byte for byte. Every
 `source_text` must be an exact, ordered substring, and the source spans must
 cover all substantive focus text. `facet` and `guidance` are system-added
-expertise and are intentionally not subject to substring validation. A
-single reading goal produces one objective; splitting is only for genuinely
+expertise and are intentionally not subject to substring validation. Facet is
+a display label only; deterministic slicing uses the stable objective `id`.
+A single reading goal produces one objective; splitting is only for genuinely
 distinct goals. Griswold remains opt-in through `griswold_reading`.
 
 There is no deterministic agreement fallback. A structurally invalid response
 gets one LLM regeneration attempt with the validation error; a missing key,
 failed call, or second invalid response is an explicit error.
 
-## Highlight enrichment and Refine
+## Highlights and Refine
 
 Map JSON highlights contain `quote`, `page`, `run_id`, `run_name`, `version`,
 `color`, `note`, `source`, and `verdict`; they do not contain a facet or
-salience score. After each successful agreement build, one disclosed LLM pass
-tags every existing highlight with an agreement objective/facet (or `other`)
-and a salience value from 0 to 1. Those tags are cached in local state and are
-exposed by `current_highlights`.
+salience score. `build_agreement` stops after validating and saving the
+agreement: it never reads, tags, filters, or modifies highlights. Consequently,
+the normal build flow leaves `current_highlights` as the raw Map JSON pool and
+reports `not_tagged`; no facet, salience, or objective-id fields are added.
 
-This enrichment is not extraction. It classifies only the already exported
-highlight pool and never searches the PDF for new highlights.
+The standalone tagging and filtering functions remain available for cached
+tag state and direct testing, but agreement building does not invoke them.
+Any such enrichment classifies only the already exported highlight pool and
+is not extraction; it never searches the PDF for new highlights.
 
 For Refine, the model has one limited job: translate the request into these
 operations:
 
 - `set_limit <N>`
-- `add_exclude <facet>` or `remove_exclude <facet>`
-- `enable_facet <id>` or `disable_facet <id>`
-- `change_density <facet> <low|medium|high>`
+- `add_exclude <objective_id>` or `remove_exclude <objective_id>`
+- `enable_objective <objective_id>` or `disable_objective <objective_id>`
+- `change_density <objective_id> <low|medium|high>`
 
-State mutation, salience ranking, and filtering then run in deterministic
-Python over the cached tags. If a request introduces an uncached semantic
-criterion, such as `implementation_details`, one additional disclosed LLM
-pass labels the complete existing pool against that criterion. The labels are
-cached, so later refinements reuse them.
+When complete cached tags exist, state mutation, salience ranking, and
+filtering run in deterministic Python over the cached objective ids and tags.
+A highlight assigned to several objectives remains visible while at least one
+of those objectives is enabled; it is hidden by objective disabling only when
+none remain enabled. Free-form facet text is never a filter key, so duplicate
+facet labels cannot cross-wire objective filters. When highlights are
+untagged, Refine returns `highlights_not_tagged`, applies no filter, and leaves
+the raw pool unchanged rather than raising.
+
+If a request introduces an uncached semantic criterion, such as
+`implementation_details`, `add_exclude`, `remove_exclude`, or
+`change_density` uses an explicit `criterion` field instead of an objective
+id. If complete base tags already exist, one additional disclosed LLM pass
+labels the complete existing pool against that criterion. The labels are
+cached, so later refinements reuse them. No criterion pass runs for an
+untagged pool.
 
 Every update reports `re_extracted: false`. Refine can only narrow, restore,
 or reorder highlights from the original exported pool; it can never create or
@@ -179,7 +194,8 @@ uv run pytest -q
 ```
 
 Tests mock every LLM call, so they require no key or network. They cover
-verbatim source validation, the no-fallback error, full-pool tagging, fixed
-Refine operations, deterministic filtering, new-criterion caching, selected
-text grounding, guided reading, PDF recovery, the exact MCP surface, and the
+verbatim source validation, the no-fallback error, agreement-only builds,
+untagged highlight and Refine behavior, direct multi-objective tagging,
+objective-id filtering, shared-highlight disable behavior, selected-text
+grounding, guided reading, PDF recovery, the exact MCP surface, and the
 absence of runtime coupling to the sibling service.

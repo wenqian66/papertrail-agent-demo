@@ -88,8 +88,52 @@ def _agreement_response() -> str:
 
 def _tag_response() -> str:
     return json.dumps({"tags": [
-        {"id": "0:0", "objective_id": "obj1", "facet": "motivation", "salience": 0.95},
-        {"id": "0:1", "objective_id": "other", "facet": "other", "salience": 0.2},
+        {
+            "id": "0:0",
+            "primary_objective_id": "obj1",
+            "secondary_objective_ids": [],
+            "salience": 0.95,
+        },
+        {
+            "id": "0:1",
+            "primary_objective_id": "other",
+            "secondary_objective_ids": [],
+            "salience": 0.2,
+        },
+    ]})
+
+
+def _multi_agreement_response() -> str:
+    return json.dumps({
+        "focus_raw": "Find motivation and evaluation.",
+        "objectives": [{
+            "id": "obj1",
+            "source_text": "Find motivation",
+            "facet": "motivation",
+            "guidance": ["problem framing"],
+        }, {
+            "id": "obj2",
+            "source_text": "evaluation.",
+            "facet": "evaluation",
+            "guidance": ["reported evidence"],
+        }],
+    })
+
+
+def _multi_tag_response() -> str:
+    return json.dumps({"tags": [
+        {
+            "id": "0:0",
+            "primary_objective_id": "obj1",
+            "secondary_objective_ids": ["obj2"],
+            "salience": 0.95,
+        },
+        {
+            "id": "0:1",
+            "primary_objective_id": "other",
+            "secondary_objective_ids": [],
+            "salience": 0.2,
+        },
     ]})
 
 
@@ -127,12 +171,11 @@ async def test_mcp_exposes_the_exact_requested_surface(offline_mcp):
 
 
 @pytest.mark.asyncio
-async def test_build_tags_once_then_refine_filters_without_extraction(
+async def test_build_saves_only_agreement_and_refine_tolerates_untagged_highlights(
     offline_mcp, monkeypatch,
 ):
     model = FakeModel([
         _agreement_response(),
-        _tag_response(),
         '{"operations":[{"op":"set_limit","value":1}]}',
     ])
     monkeypatch.setattr(server, "agent_model", model)
@@ -140,15 +183,18 @@ async def test_build_tags_once_then_refine_filters_without_extraction(
         built = tool_value(await client.call_tool(
             "build_agreement", {"focus_text": "Find the motivation."},
         ))
-        assert built["agreement"]["focus_raw"] == "Find the motivation."
-        assert built["highlight_tagging"]["tagged"] == 2
+        assert built == json.loads(_agreement_response())
+
+        saved = await client.read_resource("papertrail://agreement/current")
+        assert json.loads(saved.contents[0].text)["agreement"] == built
 
         refined = tool_value(await client.call_tool(
             "update_agreement", {"refinement": "Only keep the top one."},
         ))
         assert refined["re_extracted"] is False
+        assert refined["status"] == "highlights_not_tagged"
         assert refined["highlight_filter"]["criteria_tagging_ran"] is False
-        assert len(refined["filtered_highlights"]) == 1
+        assert len(refined["filtered_highlights"]) == 2
 
         highlights = await client.read_resource("papertrail://highlights/current")
         current = json.loads(highlights.contents[0].text)
@@ -157,28 +203,30 @@ async def test_build_tags_once_then_refine_filters_without_extraction(
             for section in current["sections"]
             for item in section["highlights"]
         ]
-        assert visible[0]["facet"] == "motivation"
-        assert visible[0]["salience"] == 0.95
+        assert current["source"] == "map_json_raw_pool"
+        assert current["tagging"]["status"] == "not_tagged"
+        assert len(visible) == 2
+        assert not {
+            "facet", "salience", "primary_objective_id",
+            "secondary_objective_ids", "criterion_tags", "rank",
+        } & set(visible[0])
+
+        session = await client.read_resource("papertrail://session/info")
+        session_payload = json.loads(session.contents[0].text)
+        assert session_payload["highlight_tagging"]["status"] == "not_tagged"
+        assert session_payload["highlight_filter"]["status"] == "highlights_not_tagged"
     assert [item[0] for item in model.prompts] == [
-        "build_agreement", "highlight tagging",
-        "update_agreement refinement translation",
+        "build_agreement", "update_agreement refinement translation",
     ]
 
 
 @pytest.mark.asyncio
-async def test_new_refine_criterion_gets_one_disclosed_tagging_pass(
+async def test_new_refine_criterion_does_not_tag_an_untagged_pool(
     offline_mcp, monkeypatch,
 ):
     model = FakeModel([
         _agreement_response(),
-        _tag_response(),
-        '{"operations":[{"op":"add_exclude","facet":"implementation_details"}]}',
-        json.dumps({"criteria": [
-            {"id": "0:0", "matches": {"implementation_details": False}},
-            {"id": "0:1", "matches": {"implementation_details": True}},
-        ]}),
-        '{"operations":[{"op":"remove_exclude","facet":"implementation_details"}]}',
-        '{"operations":[{"op":"add_exclude","facet":"implementation_details"}]}',
+        '{"operations":[{"op":"add_exclude","criterion":"implementation_details"}]}',
     ])
     monkeypatch.setattr(server, "agent_model", model)
     async with Client(offline_mcp) as client:
@@ -188,18 +236,32 @@ async def test_new_refine_criterion_gets_one_disclosed_tagging_pass(
         first = tool_value(await client.call_tool(
             "update_agreement", {"refinement": "Remove implementation details."},
         ))
-        assert first["highlight_filter"]["criteria_tagging_ran"] is True
-        assert len(first["filtered_highlights"]) == 1
+        assert first["status"] == "highlights_not_tagged"
+        assert first["highlight_filter"]["criteria_tagging_ran"] is False
+        assert len(first["filtered_highlights"]) == 2
+    assert [operation for operation, _ in model.prompts] == [
+        "build_agreement", "update_agreement refinement translation",
+    ]
 
-        await client.call_tool(
-            "update_agreement", {"refinement": "Allow implementation details."},
-        )
-        third = tool_value(await client.call_tool(
-            "update_agreement", {"refinement": "Remove implementation details again."},
+
+@pytest.mark.asyncio
+async def test_multi_objective_build_returns_only_agreement_without_tagging(
+    offline_mcp, monkeypatch,
+):
+    model = FakeModel([
+        _multi_agreement_response(),
+    ])
+    monkeypatch.setattr(server, "agent_model", model)
+    async with Client(offline_mcp) as client:
+        built = tool_value(await client.call_tool(
+            "build_agreement",
+            {"focus_text": "Find motivation and evaluation."},
         ))
-        assert third["highlight_filter"]["criteria_tagging_ran"] is False
-        assert len(third["filtered_highlights"]) == 1
-    assert sum(op == "new refinement criterion tagging" for op, _ in model.prompts) == 1
+        assert built == json.loads(_multi_agreement_response())
+        highlights = await client.read_resource("papertrail://highlights/current")
+        current = json.loads(highlights.contents[0].text)
+        assert current["tagging"]["status"] == "not_tagged"
+    assert [operation for operation, _ in model.prompts] == ["build_agreement"]
 
 
 @pytest.mark.asyncio
@@ -226,7 +288,7 @@ async def test_build_rejects_invalid_source_and_regenerates_once(
             "guidance": ["problem framing"],
         }],
     })
-    model = FakeModel([invalid, _agreement_response(), _tag_response()])
+    model = FakeModel([invalid, _agreement_response()])
     monkeypatch.setattr(server, "agent_model", model)
     async with Client(offline_mcp) as client:
         result = await client.call_tool(
@@ -234,7 +296,7 @@ async def test_build_rejects_invalid_source_and_regenerates_once(
         )
     assert result.is_error is False
     assert [operation for operation, _ in model.prompts] == [
-        "build_agreement", "build_agreement validation retry", "highlight tagging",
+        "build_agreement", "build_agreement validation retry",
     ]
 
 

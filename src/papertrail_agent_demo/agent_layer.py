@@ -14,8 +14,8 @@ REFINEMENT_OPERATIONS = {
     "set_limit",
     "add_exclude",
     "remove_exclude",
-    "enable_facet",
-    "disable_facet",
+    "enable_objective",
+    "disable_objective",
     "change_density",
 }
 
@@ -30,9 +30,10 @@ substantive part of the focus.
 
 Split only when the focus contains genuinely distinct reading goals. A focus
 about one point gets exactly one objective, even when that point has useful
-sub-aspects. facet is only a short label used later for filtering; it is not a
-taxonomy that determines the objectives. guidance is system-added expertise,
-so it does not need to occur in the user's words.
+sub-aspects. facet is only a short display label; filtering uses the stable
+objective id instead. facet is not a taxonomy that determines the objectives.
+guidance is system-added expertise, so it does not need to occur in the user's
+words.
 
 Positive single-goal example:
 Focus: I care about why they chose this dataset
@@ -57,7 +58,7 @@ Return JSON only in this exact shape:
     {{
       "id": "obj1",
       "source_text": "an exact focus substring",
-      "facet": "short_filter_label",
+      "facet": "short_display_label",
       "guidance": ["concrete search phrase", "nearby concept"]
     }}
   ]
@@ -80,28 +81,41 @@ fixed set below.
 
 Allowed operations and exact JSON fields:
 - {{"op":"set_limit","value":5}}
-- {{"op":"add_exclude","facet":"implementation_details"}}
-- {{"op":"remove_exclude","facet":"implementation_details"}}
-- {{"op":"enable_facet","id":"obj1"}}
-- {{"op":"disable_facet","id":"obj1"}}
-- {{"op":"change_density","facet":"evaluation","level":"low"}}
+- {{"op":"add_exclude","objective_id":"obj1"}}
+- {{"op":"remove_exclude","objective_id":"obj1"}}
+- {{"op":"enable_objective","objective_id":"obj1"}}
+- {{"op":"disable_objective","objective_id":"obj1"}}
+- {{"op":"change_density","objective_id":"obj1","level":"low"}}
 
-Density levels are low, medium, and high. Use a concise lowercase snake_case
-facet. If a semantic criterion is not already listed, still express it as
-add_exclude or change_density; the caller will run one disclosed tagging pass
-for that criterion. Return JSON only as {{"operations":[...]}}.
+All operations about an existing agreement objective must use its id. Never
+use its free-form facet label as a filter key. Density levels are low, medium,
+and high.
+
+If the request names a new semantic criterion that is not an agreement
+objective, keep the same operation name but use a concise lowercase
+snake_case criterion instead of objective_id:
+- {{"op":"add_exclude","criterion":"implementation_details"}}
+- {{"op":"remove_exclude","criterion":"implementation_details"}}
+- {{"op":"change_density","criterion":"implementation_details","level":"low"}}
+
+The caller will run one disclosed tagging pass for an uncached criterion.
+Return JSON only as {{"operations":[...]}}.
 
 Agreement:
 {agreement}
 
-Known cached facets and criteria:
-{known_facets}
+Known cached semantic criteria:
+{known_criteria}
 
 Refinement request:
 {request}
 """
 
 _WORDS = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
+_MULTI_GOAL_SEPARATOR = re.compile(
+    r"(?:[,;:/\n.!?]|\b(?:and|also|plus|then|versus|vs|while)\b)",
+    re.IGNORECASE,
+)
 _COVERAGE_GLUE = {
     "a", "about", "also", "and", "care", "focus", "for", "i", "interested",
     "looking", "me", "need", "on", "please", "plus", "read", "show", "tell",
@@ -158,6 +172,16 @@ def _validate_source_coverage(focus_raw: str, sources: list[str]) -> None:
             raise ValueError("source_text is not an exact ordered focus_raw substring")
         spans.append((position, position + len(source)))
         cursor = position + len(source)
+
+    if len(spans) > 1:
+        for (_, previous_end), (next_start, _) in zip(spans, spans[1:]):
+            boundary = focus_raw[
+                max(0, previous_end - 1):min(len(focus_raw), next_start + 1)
+            ]
+            if not _MULTI_GOAL_SEPARATOR.search(boundary):
+                raise ValueError(
+                    "a single-goal focus must yield exactly one objective"
+                )
 
     uncovered: list[str] = []
     for match in _WORDS.finditer(focus_raw):
@@ -231,24 +255,41 @@ def build_agreement_prompt(focus_text: str, papers: str = "(none)") -> str:
 
 
 def refinement_prompt(
-    agreement: dict[str, Any], request: str, known_facets: list[str],
+    agreement: dict[str, Any], request: str, known_criteria: list[str],
 ) -> str:
     if not isinstance(request, str) or not request.strip():
         raise ValueError("refinement request cannot be empty")
     return REFINE_OPERATIONS_PROMPT.format(
         agreement=agreement_to_text(agreement),
-        known_facets=json.dumps(sorted(set(known_facets)), ensure_ascii=False),
+        known_criteria=json.dumps(sorted(set(known_criteria)), ensure_ascii=False),
         request=request,
     )
 
 
-def _facet_name(value: Any) -> str:
+def _criterion_name(value: Any) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise ValueError("facet must be a non-empty string")
+        raise ValueError("criterion must be a non-empty string")
     normalized = re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
     if not normalized:
-        raise ValueError("facet must contain a letter or number")
+        raise ValueError("criterion must contain a letter or number")
     return normalized
+
+
+def _operation_target(
+    operation: dict[str, Any], objective_ids: set[str],
+) -> dict[str, str]:
+    has_objective = "objective_id" in operation
+    has_criterion = "criterion" in operation
+    if has_objective == has_criterion:
+        raise ValueError(
+            "operation must name exactly one objective_id or semantic criterion"
+        )
+    if has_objective:
+        objective_id = operation.get("objective_id")
+        if objective_id not in objective_ids:
+            raise ValueError(f"unknown objective id: {objective_id}")
+        return {"objective_id": objective_id}
+    return {"criterion": _criterion_name(operation.get("criterion"))}
 
 
 def refinement_diff_from_model(
@@ -271,20 +312,20 @@ def refinement_diff_from_model(
             if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 500:
                 raise ValueError("set_limit value must be an integer from 1 to 500")
             normalized.append({"op": name, "value": value})
-        elif name in {"add_exclude", "remove_exclude"}:
-            normalized.append({"op": name, "facet": _facet_name(operation.get("facet"))})
-        elif name in {"enable_facet", "disable_facet"}:
-            objective_id = operation.get("id")
+        elif name in {"enable_objective", "disable_objective"}:
+            objective_id = operation.get("objective_id")
             if objective_id not in objective_ids:
                 raise ValueError(f"unknown objective id: {objective_id}")
-            normalized.append({"op": name, "id": objective_id})
+            normalized.append({"op": name, "objective_id": objective_id})
+        elif name in {"add_exclude", "remove_exclude"}:
+            normalized.append({"op": name, **_operation_target(operation, objective_ids)})
         else:
             level = operation.get("level")
             if level not in DENSITY_LEVELS:
                 raise ValueError("density level must be low, medium, or high")
             normalized.append({
                 "op": name,
-                "facet": _facet_name(operation.get("facet")),
+                **_operation_target(operation, objective_ids),
                 "level": level,
             })
     return {"operations": normalized}
@@ -304,13 +345,16 @@ def highlight_tagging_prompt(
     } for item in highlights]
     return f"""\
 Enrich an existing highlight pool. This is classification only, not extraction.
-For every highlight id, choose the one agreement objective it best serves or
-"other". facet must equal that objective's facet, or "other". Give salience
-from 0.0 to 1.0 for how important the quote is to that objective. Do not alter,
-drop, add, or rewrite any highlight.
+For every highlight id, choose the primary agreement objective it best serves
+and an ordered list of any additional objectives it also serves. Use "other"
+as primary_objective_id only when it serves no agreement objective; in that
+case secondary_objective_ids must be empty. Give one salience score from 0.0
+to 1.0 for the quote's overall importance. Do not alter, drop, add, or rewrite
+any highlight. Do not return facet; the caller derives it from the primary
+objective for display.
 
 Return JSON only:
-{{"tags":[{{"id":"0:0","objective_id":"obj1","facet":"evaluation","salience":0.8}}]}}
+{{"tags":[{{"id":"0:0","primary_objective_id":"obj1","secondary_objective_ids":["obj2"],"salience":0.8}}]}}
 
 Agreement:
 {agreement_to_text(agreement)}
@@ -329,6 +373,7 @@ def highlight_tags_from_model(
         raise ValueError("highlight tags must contain a tags list")
     checked = validate_agreement(agreement)
     objective_facets = {item["id"]: item["facet"] for item in checked["objectives"]}
+    objective_ids = set(objective_facets)
     expected = set(expected_ids)
     result: dict[str, dict[str, Any]] = {}
     for tag in tags:
@@ -337,23 +382,41 @@ def highlight_tags_from_model(
         highlight_id = str(tag.get("id") or "")
         if highlight_id not in expected or highlight_id in result:
             raise ValueError(f"unexpected or duplicate highlight tag id: {highlight_id}")
-        objective_id = tag.get("objective_id")
-        facet = tag.get("facet")
-        if objective_id == "other":
-            if facet != "other":
-                raise ValueError("an other highlight must use facet other")
-        elif objective_id in objective_facets:
-            if facet != objective_facets[objective_id]:
-                raise ValueError("highlight facet must match its objective facet")
-        else:
-            raise ValueError(f"unknown objective_id in highlight tags: {objective_id}")
+        primary_objective_id = tag.get("primary_objective_id")
+        if primary_objective_id not in objective_ids | {"other"}:
+            raise ValueError(
+                "unknown primary_objective_id in highlight tags: "
+                f"{primary_objective_id}"
+            )
+        secondary_objective_ids = tag.get("secondary_objective_ids", [])
+        if not isinstance(secondary_objective_ids, list):
+            raise ValueError("secondary_objective_ids must be a list")
+        if any(not isinstance(value, str) for value in secondary_objective_ids):
+            raise ValueError("secondary_objective_ids entries must be strings")
+        if len(secondary_objective_ids) != len(set(secondary_objective_ids)):
+            raise ValueError("secondary_objective_ids must not contain duplicates")
+        if primary_objective_id in secondary_objective_ids:
+            raise ValueError("primary objective cannot also be a secondary objective")
+        unknown_secondary = set(secondary_objective_ids) - objective_ids
+        if unknown_secondary:
+            raise ValueError(
+                "unknown secondary_objective_ids in highlight tags: "
+                + ", ".join(sorted(unknown_secondary))
+            )
+        if primary_objective_id == "other" and secondary_objective_ids:
+            raise ValueError("an other highlight cannot have secondary objectives")
+        facet = (
+            "other" if primary_objective_id == "other"
+            else objective_facets[primary_objective_id]
+        )
         salience = tag.get("salience")
         if not isinstance(salience, (int, float)) or isinstance(salience, bool):
             raise ValueError("salience must be numeric")
         if not 0 <= float(salience) <= 1:
             raise ValueError("salience must be between 0 and 1")
         result[highlight_id] = {
-            "objective_id": objective_id,
+            "primary_objective_id": primary_objective_id,
+            "secondary_objective_ids": list(secondary_objective_ids),
             "facet": facet,
             "salience": round(float(salience), 4),
         }

@@ -18,8 +18,6 @@ from .agent_layer import (
     griswold_prompt,
     grounded_qa_prompt,
     guided_reading_prompt,
-    highlight_tagging_prompt,
-    highlight_tags_from_model,
     paper_comparison_prompt,
     refinement_diff_from_model,
     refinement_prompt,
@@ -40,23 +38,8 @@ store = ExportStore.from_env()
 agent_model = AgentModel.from_env()
 
 
-def _paper_list_for_agreement(sections_payload: dict[str, Any]) -> str:
-    document = sections_payload.get("document") or sections_payload.get("display_name") or "paper"
-    titles = [
-        section.get("title") or section.get("header") or ""
-        for section in sections_payload.get("sections") or []
-    ]
-    titles = [title for title in titles if title][:40]
-    if not titles:
-        return f"- {document}"
-    return f"- {document}\n  Sections: " + "; ".join(titles)
-
-
 async def _build(focus_text: str) -> dict[str, Any]:
-    sections = await store.paper_sections()
-    prompt = build_agreement_prompt(
-        focus_text, _paper_list_for_agreement(sections),
-    )
+    prompt = build_agreement_prompt(focus_text)
     raw = await agent_model.complete(
         prompt,
         operation="build_agreement",
@@ -107,8 +90,9 @@ async def paper_sections() -> dict[str, Any]:
     name="current_highlights",
     title="Current highlights",
     description=(
-        "The currently shown Map JSON highlights with cached objective, facet, and salience tags. "
-        "Tags are created by one disclosed LLM enrichment pass; reads and filtering are deterministic."
+        "The currently shown Map JSON highlights. Untagged highlights are returned exactly as "
+        "exported; cached objective ids, display facet, and salience are included only when an "
+        "independent tagging pass already exists. Reads are deterministic."
     ),
     mime_type="application/json",
 )
@@ -145,47 +129,29 @@ async def session_info() -> dict[str, Any]:
 @mcp.tool(
     title="Build agreement",
     description=(
-        "Use an LLM to build exact source-text objectives and system guidance, then tag every existing "
-        "highlight once with facet and salience. Requires a configured model and has no fallback."
+        "Use an LLM to build and save exact source-text objectives with system guidance. This tool "
+        "returns only the agreement and never reads, tags, filters, or modifies highlights. Requires "
+        "a configured model and has no fallback."
     ),
 )
 async def build_agreement(focus_text: str) -> dict[str, Any]:
     try:
         agreement = await _build(focus_text)
-        highlight_inputs = store.highlight_inputs()
-        raw_tags = await agent_model.complete(
-            highlight_tagging_prompt(agreement, highlight_inputs),
-            operation="highlight tagging",
-        )
-        tags = highlight_tags_from_model(
-            raw_tags, [item["id"] for item in highlight_inputs], agreement,
-        )
-        await store.save_built_agreement(
-            agreement, tags, model_name=agent_model.model,
-        )
+        await store.save_built_agreement(agreement)
     except Exception as exc:
         raise ToolError(str(exc)) from exc
-    return {
-        "agreement": agreement,
-        "agreement_text": agreement_to_text(agreement),
-        "generation": "llm",
-        "focus_preserved": True,
-        "highlight_tagging": {
-            "tagged": len(tags),
-            "fields": ["objective_id", "facet", "salience"],
-            "cached": True,
-            "re_extracted": False,
-        },
-        "next_step": "The agreement and cached highlight tags are saved in local state.",
-    }
+    return agreement
 
 
 @mcp.tool(
     title="Update agreement",
     description=(
         "Use an LLM only to translate a request into the fixed refinement operation set. Filtering "
-        "then runs deterministically on cached facet and salience tags. A new semantic criterion "
-        "causes one disclosed tagging pass. No extraction runs and no new highlight can appear."
+        "then runs deterministically on cached objective ids, semantic criteria, and salience; free-form "
+        "facets are display-only. With valid cached base tags, a new semantic criterion causes one "
+        "disclosed tagging pass. No extraction runs and no new highlight can appear. If highlights "
+        "have no valid cached base tags, the tool returns a clear untagged/no-op result instead of "
+        "filtering."
     ),
 )
 async def update_agreement(refinement: str) -> dict[str, Any]:
@@ -197,13 +163,13 @@ async def update_agreement(refinement: str) -> dict[str, Any]:
                 "No current agreement is available. Call build_agreement first; an LLM is required."
             )
 
-        known_facets = store.known_facets(agreement)
+        known_criteria = store.known_criteria()
         raw_diff = await agent_model.complete(
-            refinement_prompt(agreement, refinement, known_facets),
+            refinement_prompt(agreement, refinement, known_criteria),
             operation="update_agreement refinement translation",
         )
         diff = refinement_diff_from_model(raw_diff, agreement)
-        criteria = store.criteria_needed(agreement, diff["operations"])
+        criteria = store.criteria_needed(diff["operations"])
         criterion_updates = None
         if criteria:
             highlight_inputs = store.highlight_inputs()
@@ -227,6 +193,7 @@ async def update_agreement(refinement: str) -> dict[str, Any]:
         raise ToolError(str(exc)) from exc
     filtered_highlights = await store.ranked_highlights()
     return {
+        "status": filter_report.get("status", "filtered"),
         "agreement": agreement,
         "agreement_text": agreement_to_text(agreement),
         "filter_state": filter_report["filter_state"],

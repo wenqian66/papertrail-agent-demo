@@ -7,14 +7,30 @@ import os
 
 class AgentModel:
     def __init__(
-        self, *, api_key: str = "", model: str = "", base_url: str = "",
+        self,
+        *,
+        api_key: str = "",
+        model: str = "",
+        base_url: str = "",
+        temperature: float | None = None,
     ) -> None:
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
+        self.temperature = temperature
 
     @classmethod
     def from_env(cls) -> "AgentModel":
+        temperature_raw = os.environ.get("PAPERTRAIL_AGENT_TEMPERATURE")
+        try:
+            temperature = (
+                float(temperature_raw) if temperature_raw is not None else None
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "PAPERTRAIL_AGENT_TEMPERATURE must be a number"
+            ) from exc
+
         return cls(
             api_key=(
                 os.environ.get("PAPERTRAIL_AGENT_API_KEY")
@@ -28,6 +44,7 @@ class AgentModel:
                 os.environ.get("PAPERTRAIL_AGENT_BASE_URL")
                 or os.environ.get("CUSTOM_BASE_URL", "")
             ),
+            temperature=temperature,
         )
 
     @property
@@ -52,11 +69,13 @@ class AgentModel:
             max_retries=0,
         )
         try:
-            response = await client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-            )
+            request_kwargs = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            if self.temperature is not None:
+                request_kwargs["temperature"] = self.temperature
+            response = await client.chat.completions.create(**request_kwargs)
             text = (response.choices[0].message.content or "").strip()
             if not text:
                 raise RuntimeError(f"{operation} returned an empty model response")
