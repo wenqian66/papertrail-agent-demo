@@ -1,98 +1,112 @@
-"""Shared logic for PaperTrail's MCP agent layer.
-
-This module has no MCP or FastAPI dependency. The FastAPI agreement step, the
-MCP tools, and the demo CLI all use the same validation, serialization,
-fallback guidance, passage search, and prompt text.
-"""
+"""Pure agreement, tagging, refinement, retrieval, and prompt logic."""
 
 from __future__ import annotations
 
-import copy
 import json
 import re
 from typing import Any
 
 
 MAX_OBJECTIVES = 32
+MAX_HIGHLIGHTS = 500
+DENSITY_LEVELS = {"low", "medium", "high"}
+REFINEMENT_OPERATIONS = {
+    "set_limit",
+    "add_exclude",
+    "remove_exclude",
+    "enable_facet",
+    "disable_facet",
+    "change_density",
+}
 
 BUILD_AGREEMENT_PROMPT = """\
-Turn the user's reading focus into a structured extraction agreement.
+Build a structured extraction agreement from the user's reading focus.
 
-You have exactly two jobs:
-1. Split the focus only when it contains more than one distinct reading goal.
-2. Add practical extraction guidance for each resulting objective.
+The user's words are authoritative. Copy focus_raw byte for byte. Every
+source_text must be one exact, contiguous substring of focus_raw. Do not
+paraphrase, improve, complete, or replace the user's words. The source_text
+spans must remain in their original order and together retain every
+substantive part of the focus.
 
-Preservation is absolute. Every original_text value must be copied as one
-exact, contiguous substring of the user's focus. Keep the user's spelling,
-capitalization, punctuation, qualifiers, numbering, and wording. Do not
-paraphrase, summarize, improve, complete, or map the focus to a taxonomy. Do
-not drop any word from the focus. A focus with one goal stays one objective.
+Split only when the focus contains genuinely distinct reading goals. A focus
+about one point gets exactly one objective, even when that point has useful
+sub-aspects. facet is only a short label used later for filtering; it is not a
+taxonomy that determines the objectives. guidance is system-added expertise,
+so it does not need to occur in the user's words.
 
-Guidance should say where in an academic paper to look, which words or
-patterns are useful signals, what near misses to exclude, and how to handle
-ambiguity. Guidance may use the paper list below, but must not claim that the
-papers contain a finding.
+Positive single-goal example:
+Focus: I care about why they chose this dataset
+Output has exactly one objective whose source_text is
+"why they chose this dataset", facet might be "evaluation", and guidance may
+include "dataset justification" and "dataset limitations".
 
-Return JSON only, with this exact shape:
+Positive multi-goal example:
+Focus: What problem does it solve, and what is the main result?
+Output has two objectives, one sourced from "What problem does it solve" and
+one sourced from "what is the main result?".
+
+Negative example:
+Do not split "Explain why they chose this dataset" into separate objectives
+for dataset choice, justification, and limitations. Those are guidance for
+one user goal, not three goals.
+
+Return JSON only in this exact shape:
 {{
+  "focus_raw": "the exact complete focus",
   "objectives": [
     {{
-      "original_text": "an exact substring of the focus",
-      "extraction_guidance": {{
-        "look_in": ["section type"],
-        "signals": ["word or pattern"],
-        "exclude": ["near miss"],
-        "edge_cases": "how to handle ambiguity"
-      }}
+      "id": "obj1",
+      "source_text": "an exact focus substring",
+      "facet": "short_filter_label",
+      "guidance": ["concrete search phrase", "nearby concept"]
     }}
   ]
 }}
 
-The user's focus:
-<focus>
-{question}
-</focus>
+Use obj1, obj2, and so on in order. Keep guidance concise and operational.
+The paper names and headings below are context only; do not claim findings.
 
-The papers this run will read:
+Focus:
+<focus>{focus}</focus>
+
+Paper context:
 {papers}
 """
 
-REFINE_AGREEMENT_PROMPT = """\
-Update a structured extraction agreement from a user's refinement request.
+REFINE_OPERATIONS_PROMPT = """\
+Translate one refinement request into a small structured diff. Do not rewrite
+the agreement, judge individual quotes, or invent any operation outside the
+fixed set below.
 
-Change only extraction_guidance. Keep the objectives in the same order and
-copy every original_text value byte for byte from the current agreement. Do
-not add, remove, merge, split, or rewrite objectives. Translate the request
-into concrete look_in, signals, exclude, or edge_cases guidance. A request for
-a result limit belongs in edge_cases. A request to remove a category belongs
-in exclude.
+Allowed operations and exact JSON fields:
+- {{"op":"set_limit","value":5}}
+- {{"op":"add_exclude","facet":"implementation_details"}}
+- {{"op":"remove_exclude","facet":"implementation_details"}}
+- {{"op":"enable_facet","id":"obj1"}}
+- {{"op":"disable_facet","id":"obj1"}}
+- {{"op":"change_density","facet":"evaluation","level":"low"}}
 
-Return JSON only in the same shape as the current agreement.
+Density levels are low, medium, and high. Use a concise lowercase snake_case
+facet. If a semantic criterion is not already listed, still express it as
+add_exclude or change_density; the caller will run one disclosed tagging pass
+for that criterion. Return JSON only as {{"operations":[...]}}.
 
-Current agreement:
+Agreement:
 {agreement}
+
+Known cached facets and criteria:
+{known_facets}
 
 Refinement request:
 {request}
 """
 
-
 _WORDS = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
-_INLINE_NUMBER = re.compile(r"(?=\s+(?:\(\d+\)|\d+[.)])\s+)")
-_CONJUNCTION_GOAL = re.compile(
-    r"(?=\s+and\s+(?:what|why|how|which|where|when|who)\b)",
-    re.IGNORECASE,
-)
-_BULLET = re.compile(r"^\s*(?:[-*+]\s+|\(?\d+[.)]\s+)")
-_TOP_N = re.compile(
-    r"\b(?:top|best|strongest|only\s+keep|keep\s+only|at\s+most)\s+(\d+)\b",
-    re.IGNORECASE,
-)
-_EXCLUDE_REQUEST = re.compile(
-    r"\b(?:remove|exclude|omit|drop|without)\s+(.+?)(?:[.!?]|$)",
-    re.IGNORECASE,
-)
-
+_COVERAGE_GLUE = {
+    "a", "about", "also", "and", "care", "focus", "for", "i", "interested",
+    "looking", "me", "need", "on", "please", "plus", "read", "show", "tell",
+    "then", "to", "us", "want", "we", "would",
+}
 _STOP_WORDS = {
     "a", "about", "an", "and", "are", "as", "at", "be", "by", "does",
     "for", "from", "how", "in", "is", "it", "of", "on", "or", "paper",
@@ -101,13 +115,7 @@ _STOP_WORDS = {
 }
 
 
-def agreement_to_text(agreement: dict[str, Any]) -> str:
-    """Canonical, editable text stored in the existing agreement column."""
-    checked = validate_agreement(agreement)
-    return json.dumps(checked, ensure_ascii=False, indent=2)
-
-
-def _json_object(value: str | dict[str, Any]) -> dict[str, Any]:
+def _json_object(value: str | dict[str, Any], label: str) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     text = (value or "").strip()
@@ -116,45 +124,65 @@ def _json_object(value: str | dict[str, Any]) -> dict[str, Any]:
         text = re.sub(r"\s*```$", "", text)
     loaded = json.loads(text)
     if not isinstance(loaded, dict):
-        raise ValueError("agreement must be a JSON object")
+        raise ValueError(f"{label} must be a JSON object")
     return loaded
 
 
+def parse_json_object(value: str, label: str = "model response") -> dict[str, Any]:
+    """Parse a model JSON object, accepting one surrounding JSON code fence."""
+    return _json_object(value, label)
+
+
 def _string_list(value: Any, field: str) -> list[str]:
-    if not isinstance(value, list):
-        raise ValueError(f"{field} must be a list")
-    out: list[str] = []
-    for entry in value:
-        if not isinstance(entry, str) or not entry.strip():
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"{field} must be a non-empty list")
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
             raise ValueError(f"{field} entries must be non-empty strings")
-        out.append(entry.strip())
-    return out
+        result.append(item.strip())
+    return result
 
 
 def _focus_tokens(text: str) -> list[str]:
-    return [m.group(0) for m in _WORDS.finditer(text)]
+    return [match.group(0) for match in _WORDS.finditer(text)]
 
 
-def _validate_focus_coverage(focus_text: str, originals: list[str]) -> None:
-    """Require exact, ordered source spans and complete word coverage."""
-    focus = focus_text.strip()
+def _validate_source_coverage(focus_raw: str, sources: list[str]) -> None:
+    """Require ordered source spans and reject uncovered substantive words."""
     cursor = 0
-    for original in originals:
-        pos = focus.find(original, cursor)
-        if pos < 0:
-            raise ValueError("original_text is not an exact ordered focus substring")
-        cursor = pos + len(original)
-    covered = [token for original in originals for token in _focus_tokens(original)]
-    if covered != _focus_tokens(focus):
-        raise ValueError("agreement dropped, added, or reordered focus words")
+    spans: list[tuple[int, int]] = []
+    for source in sources:
+        position = focus_raw.find(source, cursor)
+        if position < 0:
+            raise ValueError("source_text is not an exact ordered focus_raw substring")
+        spans.append((position, position + len(source)))
+        cursor = position + len(source)
+
+    uncovered: list[str] = []
+    for match in _WORDS.finditer(focus_raw):
+        covered = any(start <= match.start() and match.end() <= end for start, end in spans)
+        token = match.group(0)
+        if not covered and not token.isdigit() and token.casefold() not in _COVERAGE_GLUE:
+            uncovered.append(token)
+    if uncovered:
+        raise ValueError(
+            "agreement objectives do not cover substantive focus_raw text: "
+            + ", ".join(uncovered[:8])
+        )
 
 
 def validate_agreement(
     value: str | dict[str, Any], *, focus_text: str | None = None,
-    original_agreement: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Validate and normalize an agreement without changing original text."""
-    data = _json_object(value)
+    """Validate the new agreement shape without rewriting user source text."""
+    data = _json_object(value, "agreement")
+    focus_raw = data.get("focus_raw")
+    if not isinstance(focus_raw, str) or not focus_raw.strip():
+        raise ValueError("focus_raw must be a non-empty string")
+    if focus_text is not None and focus_raw != focus_text:
+        raise ValueError("focus_raw must match the user's focus byte for byte")
+
     objectives = data.get("objectives")
     if not isinstance(objectives, list) or not objectives:
         raise ValueError("agreement needs at least one objective")
@@ -162,214 +190,230 @@ def validate_agreement(
         raise ValueError(f"agreement has more than {MAX_OBJECTIVES} objectives")
 
     normalized: list[dict[str, Any]] = []
-    originals: list[str] = []
-    for objective in objectives:
+    sources: list[str] = []
+    for index, objective in enumerate(objectives, 1):
         if not isinstance(objective, dict):
             raise ValueError("each objective must be an object")
-        original = objective.get("original_text")
-        if not isinstance(original, str) or not original:
-            raise ValueError("original_text must be a non-empty string")
-        guidance = objective.get("extraction_guidance")
-        if not isinstance(guidance, dict):
-            raise ValueError("extraction_guidance must be an object")
-        edge_cases = guidance.get("edge_cases")
-        if not isinstance(edge_cases, str):
-            raise ValueError("edge_cases must be a string")
+        objective_id = objective.get("id")
+        expected_id = f"obj{index}"
+        if objective_id != expected_id:
+            raise ValueError(f"objective {index} id must be {expected_id}")
+        source_text = objective.get("source_text")
+        if not isinstance(source_text, str) or not source_text:
+            raise ValueError("source_text must be a non-empty string")
+        facet = objective.get("facet")
+        if not isinstance(facet, str) or not facet.strip():
+            raise ValueError("facet must be a non-empty string")
         normalized.append({
-            "original_text": original,
-            "extraction_guidance": {
-                "look_in": _string_list(guidance.get("look_in"), "look_in"),
-                "signals": _string_list(guidance.get("signals"), "signals"),
-                "exclude": _string_list(guidance.get("exclude"), "exclude"),
-                "edge_cases": edge_cases.strip(),
-            },
+            "id": objective_id,
+            "source_text": source_text,
+            "facet": facet.strip(),
+            "guidance": _string_list(objective.get("guidance"), "guidance"),
         })
-        originals.append(original)
+        sources.append(source_text)
 
-    if focus_text is not None:
-        _validate_focus_coverage(focus_text, originals)
-    if original_agreement is not None:
-        before = validate_agreement(original_agreement)
-        expected = [obj["original_text"] for obj in before["objectives"]]
-        if originals != expected:
-            raise ValueError("a refinement changed the agreement objectives")
-    return {"objectives": normalized}
+    _validate_source_coverage(focus_raw, sources)
+    return {"focus_raw": focus_raw, "objectives": normalized}
 
 
 def agreement_from_model(focus_text: str, response_text: str) -> dict[str, Any]:
-    """Parse model output and enforce the no-rewrite, no-drop contract."""
     return validate_agreement(response_text, focus_text=focus_text)
 
 
-def refined_agreement_from_model(
-    current: dict[str, Any], response_text: str,
-) -> dict[str, Any]:
-    """Parse model refinement output and freeze every objective text."""
-    return validate_agreement(response_text, original_agreement=current)
-
-
-def _focus_parts(focus_text: str) -> list[str]:
-    """Conservative offline split used only when no model is configured."""
-    focus = focus_text.strip()
-    if not focus:
-        raise ValueError("focus text cannot be empty")
-
-    lines = list(re.finditer(r"[^\r\n]+", focus))
-    nonempty = [m for m in lines if m.group(0).strip()]
-    bullet_indexes = [i for i, m in enumerate(nonempty) if _BULLET.match(m.group(0))]
-    if len(bullet_indexes) >= 2:
-        starts = [nonempty[i].start() for i in bullet_indexes]
-        starts[0] = 0
-        return [
-            focus[start:(starts[i + 1] if i + 1 < len(starts) else len(focus))].strip()
-            for i, start in enumerate(starts)
-        ]
-    if len(nonempty) >= 2:
-        return [m.group(0).strip() for m in nonempty]
-
-    numbered = [part.strip() for part in _INLINE_NUMBER.split(focus) if part.strip()]
-    if len(numbered) >= 2:
-        return numbered
-    compound = [part.strip() for part in _CONJUNCTION_GOAL.split(focus) if part.strip()]
-    if len(compound) >= 2:
-        return compound
-    return [focus]
-
-
-def _keywords(text: str, limit: int = 6) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for token in _focus_tokens(text):
-        lowered = token.casefold()
-        if len(lowered) < 3 or lowered in _STOP_WORDS or lowered in seen:
-            continue
-        seen.add(lowered)
-        out.append(token)
-        if len(out) == limit:
-            break
-    return out
-
-
-def _guidance_for(text: str) -> dict[str, Any]:
-    lowered = text.casefold()
-    look_in: list[str]
-    signals: list[str]
-    exclude: list[str]
-    edge_cases: str
-    if any(term in lowered for term in ("motivat", "problem", "gap", "prior")):
-        look_in = ["abstract", "introduction", "related work"]
-        signals = ["however", "limitation", "fails to", "we ask", "challenge"]
-        exclude = ["method details with no stated rationale", "results with no problem framing"]
-        edge_cases = (
-            "Motivation can be implicit. Keep a passage only when the authors connect "
-            "a prior limitation or practical need to the question they pursue."
-        )
-    elif any(term in lowered for term in ("method", "solution", "approach", "system", "design")):
-        look_in = ["abstract", "method", "approach", "system design"]
-        signals = ["we propose", "our approach", "consists of", "algorithm", "architecture"]
-        exclude = ["evaluation results", "future work", "background methods not adopted"]
-        edge_cases = (
-            "Separate the claimed mechanism and rationale from evidence that it worked. "
-            "Keep implementation detail only when it explains how the proposed solution is achieved."
-        )
-    elif any(term in lowered for term in ("evaluat", "result", "baseline", "experiment", "benefit")):
-        look_in = ["evaluation", "experiments", "results", "discussion"]
-        signals = ["baseline", "compared with", "improves", "decreases", "ablation", "limitation"]
-        exclude = ["experimental setup with no result", "unsupported performance claims"]
-        edge_cases = (
-            "Keep the comparison conditions with the reported outcome. Treat an author explanation "
-            "as interpretation unless the same passage supplies supporting evidence."
-        )
-    elif any(term in lowered for term in ("contribut", "novel", "advance")):
-        look_in = ["abstract", "introduction", "conclusion"]
-        signals = ["we contribute", "our contributions", "first", "novel", "we introduce"]
-        exclude = ["broad impact claims with no concrete contribution", "future work"]
-        edge_cases = (
-            "Prefer explicit author claims, but keep a concrete contribution stated without a label. "
-            "Do not invent novelty by comparing unrelated passages."
-        )
-    elif any(term in lowered for term in ("future", "open question", "next step")):
-        look_in = ["discussion", "limitations", "conclusion", "future work"]
-        signals = ["future work", "remains", "open question", "could", "next"]
-        exclude = ["work already completed in the paper", "generic field-wide speculation"]
-        edge_cases = (
-            "Distinguish directions the authors actually propose from limitations that merely imply "
-            "a direction. Label an implication as such in the extraction note."
-        )
-    else:
-        look_in = ["abstract", "introduction", "methods", "results", "discussion", "conclusion"]
-        signals = _keywords(text) or ["explicit answer", "definition", "reported evidence"]
-        exclude = ["keyword matches that do not answer the objective", "references to other work only"]
-        edge_cases = (
-            "When the answer is distributed across passages, keep each independently useful verbatim "
-            "passage and explain the connection in its note rather than inferring a new quote."
-        )
-    return {
-        "look_in": look_in,
-        "signals": signals,
-        "exclude": exclude,
-        "edge_cases": edge_cases,
-    }
-
-
-def build_agreement_fallback(focus_text: str) -> dict[str, Any]:
-    """Build a safe local agreement for demos without an agent model."""
-    agreement = {
-        "objectives": [
-            {"original_text": part, "extraction_guidance": _guidance_for(part)}
-            for part in _focus_parts(focus_text)
-        ]
-    }
-    return validate_agreement(agreement, focus_text=focus_text)
-
-
-def _append_unique(values: list[str], value: str) -> None:
-    if value and value.casefold() not in {entry.casefold() for entry in values}:
-        values.append(value)
-
-
-def refine_agreement_fallback(
-    current: dict[str, Any], request: str,
-) -> dict[str, Any]:
-    """Translate common refine requests without changing objective text."""
-    request = (request or "").strip()
-    if not request:
-        raise ValueError("refinement request cannot be empty")
-    updated = copy.deepcopy(validate_agreement(current))
-    limit_match = _TOP_N.search(request)
-    exclusion_match = _EXCLUDE_REQUEST.search(request)
-    for objective in updated["objectives"]:
-        guidance = objective["extraction_guidance"]
-        if limit_match:
-            limit = int(limit_match.group(1))
-            sentence = (
-                f"Across the rerun, return at most {limit} of the strongest passages for this "
-                "objective, preferring direct and specific evidence."
-            )
-            existing = guidance["edge_cases"]
-            guidance["edge_cases"] = f"{existing} {sentence}".strip()
-        if exclusion_match:
-            exclusion = re.split(
-                r"\s+and\s+(?:only\s+keep|keep\s+only|top|at\s+most)\b",
-                exclusion_match.group(1).strip(),
-                maxsplit=1,
-                flags=re.IGNORECASE,
-            )[0].strip()
-            _append_unique(guidance["exclude"], exclusion)
-        if not limit_match and not exclusion_match:
-            existing = guidance["edge_cases"]
-            guidance["edge_cases"] = f"{existing} User refinement: {request}".strip()
-    return validate_agreement(updated, original_agreement=current)
+def agreement_to_text(agreement: dict[str, Any]) -> str:
+    return json.dumps(validate_agreement(agreement), ensure_ascii=False, indent=2)
 
 
 def build_agreement_prompt(focus_text: str, papers: str = "(none)") -> str:
-    return BUILD_AGREEMENT_PROMPT.format(question=focus_text, papers=papers or "(none)")
+    if not isinstance(focus_text, str) or not focus_text.strip():
+        raise ValueError("focus text cannot be empty")
+    return BUILD_AGREEMENT_PROMPT.format(focus=focus_text, papers=papers or "(none)")
 
 
-def refine_agreement_prompt(current: dict[str, Any], request: str) -> str:
-    return REFINE_AGREEMENT_PROMPT.format(
-        agreement=agreement_to_text(current), request=request,
+def refinement_prompt(
+    agreement: dict[str, Any], request: str, known_facets: list[str],
+) -> str:
+    if not isinstance(request, str) or not request.strip():
+        raise ValueError("refinement request cannot be empty")
+    return REFINE_OPERATIONS_PROMPT.format(
+        agreement=agreement_to_text(agreement),
+        known_facets=json.dumps(sorted(set(known_facets)), ensure_ascii=False),
+        request=request,
     )
+
+
+def _facet_name(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("facet must be a non-empty string")
+    normalized = re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
+    if not normalized:
+        raise ValueError("facet must contain a letter or number")
+    return normalized
+
+
+def refinement_diff_from_model(
+    response_text: str, agreement: dict[str, Any],
+) -> dict[str, Any]:
+    data = _json_object(response_text, "refinement diff")
+    operations = data.get("operations")
+    if not isinstance(operations, list) or not operations:
+        raise ValueError("refinement diff needs at least one operation")
+    objective_ids = {item["id"] for item in validate_agreement(agreement)["objectives"]}
+    normalized: list[dict[str, Any]] = []
+    for operation in operations:
+        if not isinstance(operation, dict):
+            raise ValueError("each refinement operation must be an object")
+        name = operation.get("op")
+        if name not in REFINEMENT_OPERATIONS:
+            raise ValueError(f"unsupported refinement operation: {name}")
+        if name == "set_limit":
+            value = operation.get("value")
+            if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 500:
+                raise ValueError("set_limit value must be an integer from 1 to 500")
+            normalized.append({"op": name, "value": value})
+        elif name in {"add_exclude", "remove_exclude"}:
+            normalized.append({"op": name, "facet": _facet_name(operation.get("facet"))})
+        elif name in {"enable_facet", "disable_facet"}:
+            objective_id = operation.get("id")
+            if objective_id not in objective_ids:
+                raise ValueError(f"unknown objective id: {objective_id}")
+            normalized.append({"op": name, "id": objective_id})
+        else:
+            level = operation.get("level")
+            if level not in DENSITY_LEVELS:
+                raise ValueError("density level must be low, medium, or high")
+            normalized.append({
+                "op": name,
+                "facet": _facet_name(operation.get("facet")),
+                "level": level,
+            })
+    return {"operations": normalized}
+
+
+def highlight_tagging_prompt(
+    agreement: dict[str, Any], highlights: list[dict[str, Any]],
+) -> str:
+    if len(highlights) > MAX_HIGHLIGHTS:
+        raise ValueError(f"highlight pool exceeds the demo cap of {MAX_HIGHLIGHTS}")
+    compact = [{
+        "id": item["id"],
+        "section": item.get("section"),
+        "page": item.get("page"),
+        "quote": item.get("quote"),
+        "note": item.get("note"),
+    } for item in highlights]
+    return f"""\
+Enrich an existing highlight pool. This is classification only, not extraction.
+For every highlight id, choose the one agreement objective it best serves or
+"other". facet must equal that objective's facet, or "other". Give salience
+from 0.0 to 1.0 for how important the quote is to that objective. Do not alter,
+drop, add, or rewrite any highlight.
+
+Return JSON only:
+{{"tags":[{{"id":"0:0","objective_id":"obj1","facet":"evaluation","salience":0.8}}]}}
+
+Agreement:
+{agreement_to_text(agreement)}
+
+Existing highlights:
+{json.dumps(compact, ensure_ascii=False)}
+"""
+
+
+def highlight_tags_from_model(
+    response_text: str, expected_ids: list[str], agreement: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    data = _json_object(response_text, "highlight tags")
+    tags = data.get("tags")
+    if not isinstance(tags, list):
+        raise ValueError("highlight tags must contain a tags list")
+    checked = validate_agreement(agreement)
+    objective_facets = {item["id"]: item["facet"] for item in checked["objectives"]}
+    expected = set(expected_ids)
+    result: dict[str, dict[str, Any]] = {}
+    for tag in tags:
+        if not isinstance(tag, dict):
+            raise ValueError("each highlight tag must be an object")
+        highlight_id = str(tag.get("id") or "")
+        if highlight_id not in expected or highlight_id in result:
+            raise ValueError(f"unexpected or duplicate highlight tag id: {highlight_id}")
+        objective_id = tag.get("objective_id")
+        facet = tag.get("facet")
+        if objective_id == "other":
+            if facet != "other":
+                raise ValueError("an other highlight must use facet other")
+        elif objective_id in objective_facets:
+            if facet != objective_facets[objective_id]:
+                raise ValueError("highlight facet must match its objective facet")
+        else:
+            raise ValueError(f"unknown objective_id in highlight tags: {objective_id}")
+        salience = tag.get("salience")
+        if not isinstance(salience, (int, float)) or isinstance(salience, bool):
+            raise ValueError("salience must be numeric")
+        if not 0 <= float(salience) <= 1:
+            raise ValueError("salience must be between 0 and 1")
+        result[highlight_id] = {
+            "objective_id": objective_id,
+            "facet": facet,
+            "salience": round(float(salience), 4),
+        }
+    if set(result) != expected:
+        missing = sorted(expected - set(result))
+        raise ValueError(f"highlight tags omitted ids: {', '.join(missing[:8])}")
+    return result
+
+
+def criterion_tagging_prompt(
+    criteria: list[str], highlights: list[dict[str, Any]],
+) -> str:
+    compact = [{
+        "id": item["id"],
+        "section": item.get("section"),
+        "page": item.get("page"),
+        "quote": item.get("quote"),
+        "note": item.get("note"),
+    } for item in highlights]
+    return f"""\
+Label the existing highlights against new filtering criteria. This is one
+disclosed enrichment pass, not extraction. Do not add, remove, rank, or rewrite
+quotes. For every id, return one boolean for every criterion.
+
+Return JSON only:
+{{"criteria":[{{"id":"0:0","matches":{{"implementation_details":true}}}}]}}
+
+Criteria:
+{json.dumps(criteria, ensure_ascii=False)}
+
+Existing highlights:
+{json.dumps(compact, ensure_ascii=False)}
+"""
+
+
+def criterion_tags_from_model(
+    response_text: str, expected_ids: list[str], criteria: list[str],
+) -> dict[str, dict[str, bool]]:
+    data = _json_object(response_text, "criterion tags")
+    rows = data.get("criteria")
+    if not isinstance(rows, list):
+        raise ValueError("criterion tags must contain a criteria list")
+    expected = set(expected_ids)
+    expected_criteria = set(criteria)
+    result: dict[str, dict[str, bool]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("each criterion tag must be an object")
+        highlight_id = str(row.get("id") or "")
+        if highlight_id not in expected or highlight_id in result:
+            raise ValueError(f"unexpected or duplicate criterion tag id: {highlight_id}")
+        matches = row.get("matches")
+        if not isinstance(matches, dict) or set(matches) != expected_criteria:
+            raise ValueError("criterion matches must name every requested criterion exactly")
+        if any(not isinstance(value, bool) for value in matches.values()):
+            raise ValueError("criterion matches must be booleans")
+        result[highlight_id] = dict(matches)
+    if set(result) != expected:
+        raise ValueError("criterion tags must cover the complete highlight pool")
+    return result
 
 
 def _search_terms(text: str) -> list[str]:
@@ -380,30 +424,30 @@ def _search_terms(text: str) -> list[str]:
 
 
 def _passage_chunks(text: str, max_chars: int = 900) -> list[tuple[int, str]]:
-    paragraphs = [m for m in re.finditer(r"\S(?:.*?\S)?(?=\n\s*\n|\Z)", text, re.S)]
+    paragraphs = [match for match in re.finditer(r"\S(?:.*?\S)?(?=\n\s*\n|\Z)", text, re.S)]
     if not paragraphs:
-        paragraphs = [m for m in re.finditer(r"\S.*?(?=\Z)", text, re.S)]
-    out: list[tuple[int, str]] = []
+        paragraphs = [match for match in re.finditer(r"\S.*?(?=\Z)", text, re.S)]
+    result: list[tuple[int, str]] = []
     for paragraph in paragraphs:
         raw = " ".join(paragraph.group(0).split())
         if not raw:
             continue
         if len(raw) <= max_chars:
-            out.append((paragraph.start(), raw))
+            result.append((paragraph.start(), raw))
             continue
         sentences = re.split(r"(?<=[.!?])\s+", raw)
         chunk = ""
         offset = paragraph.start()
         for sentence in sentences:
             if chunk and len(chunk) + len(sentence) + 1 > max_chars:
-                out.append((offset, chunk))
+                result.append((offset, chunk))
                 offset += len(chunk) + 1
                 chunk = sentence
             else:
                 chunk = f"{chunk} {sentence}".strip()
         if chunk:
-            out.append((offset, chunk))
-    return out
+            result.append((offset, chunk))
+    return result
 
 
 def _score_passage(question: str, passage: str) -> float:
@@ -421,7 +465,7 @@ def find_relevant_passages(
     question: str, sections: list[dict[str, Any]],
     highlights: list[dict[str, Any]], limit: int = 8,
 ) -> dict[str, Any]:
-    """Rank paper text and highlight quotes with section and page anchors."""
+    """Deterministically rank paper text and highlights with lexical overlap."""
     question = (question or "").strip()
     if not question:
         raise ValueError("question cannot be empty")
@@ -431,13 +475,10 @@ def find_relevant_passages(
         title = section.get("title") or section.get("header") or "Untitled section"
         page_start = section.get("page_start") or section.get("page") or 1
         page_texts = section.get("text_pages") or []
-        if page_texts:
-            text_sources = [
-                (entry.get("page") or page_start, entry.get("text") or "")
-                for entry in page_texts
-            ]
-        else:
-            text_sources = [(page_start, section.get("text") or "")]
+        text_sources = [
+            (entry.get("page") or page_start, entry.get("text") or "")
+            for entry in page_texts
+        ] if page_texts else [(page_start, section.get("text") or "")]
         for page, text in text_sources:
             for _offset, passage in _passage_chunks(text):
                 score = _score_passage(question, passage)
@@ -474,85 +515,25 @@ def find_relevant_passages(
         selected.append(candidate)
         if len(selected) == limit:
             break
-    return {
-        "question": question,
-        "addressed": bool(selected),
-        "passages": selected,
-    }
+    return {"question": question, "addressed": bool(selected), "passages": selected}
 
 
+_GRISWOLD_SOURCES = [
+    "Motivations: What is the people problem? What is the technical problem? Why are prior solutions inadequate? What is the research question?",
+    "Proposed solution: What is the hypothesis? Why should it work? How is it achieved? Keep the solution separate from its results.",
+    "Evaluation: What argument or experiment is used? What benefits and problems are found?",
+    "Contributions: What concrete contributions does the paper claim?",
+    "Future directions: What future work or next steps do the authors identify?",
+]
 GRISWOLD_AGREEMENT = validate_agreement({
+    "focus_raw": "\n".join(_GRISWOLD_SOURCES),
     "objectives": [
-        {
-            "original_text": (
-                "Motivations: What is the people problem? What is the technical problem? "
-                "Why are prior solutions inadequate? What is the research question?"
-            ),
-            "extraction_guidance": {
-                "look_in": ["abstract", "introduction", "related work"],
-                "signals": ["however", "challenge", "limitation", "we ask", "existing approaches"],
-                "exclude": ["solution detail without problem framing", "results without motivation"],
-                "edge_cases": (
-                    "The people problem may be described as consequences or stakeholders rather than "
-                    "named directly. Keep implicit motivation only when the authors connect it to the "
-                    "technical problem."
-                ),
-            },
-        },
-        {
-            "original_text": (
-                "Proposed solution: What is the hypothesis? Why should it work? How is it achieved? "
-                "Keep the solution separate from its results."
-            ),
-            "extraction_guidance": {
-                "look_in": ["abstract", "approach", "methods", "system design"],
-                "signals": ["we propose", "our hypothesis", "we design", "consists of", "because"],
-                "exclude": ["evaluation outcomes", "background techniques the authors do not adopt"],
-                "edge_cases": (
-                    "Keep rationale and mechanism together when they are in one passage. Do not treat an "
-                    "observed result as part of the proposed solution."
-                ),
-            },
-        },
-        {
-            "original_text": (
-                "Evaluation: What argument or experiment is used? What benefits and problems are found?"
-            ),
-            "extraction_guidance": {
-                "look_in": ["evaluation", "experiments", "results", "discussion", "limitations"],
-                "signals": ["baseline", "dataset", "metric", "compared with", "improves", "fails"],
-                "exclude": ["setup detail with no bearing on validity", "unmeasured benefit claims"],
-                "edge_cases": (
-                    "Keep enough context to identify the comparison and metric. Separate reported outcomes "
-                    "from the authors' explanation of why they occurred."
-                ),
-            },
-        },
-        {
-            "original_text": "Contributions: What concrete contributions does the paper claim?",
-            "extraction_guidance": {
-                "look_in": ["abstract", "introduction", "conclusion"],
-                "signals": ["we contribute", "our contributions", "we introduce", "first", "novel"],
-                "exclude": ["generic impact claims", "work credited only to prior research"],
-                "edge_cases": (
-                    "Prefer explicit contribution lists, but keep an unlabeled concrete contribution when "
-                    "the authors clearly claim ownership of it."
-                ),
-            },
-        },
-        {
-            "original_text": "Future directions: What future work or next steps do the authors identify?",
-            "extraction_guidance": {
-                "look_in": ["discussion", "limitations", "conclusion", "future work"],
-                "signals": ["future work", "remains", "next", "could be extended", "open"],
-                "exclude": ["directions proposed only by cited work", "completed follow-up experiments"],
-                "edge_cases": (
-                    "Distinguish explicit future directions from limitations that only imply one. Keep the "
-                    "latter only with a note that the direction is implied."
-                ),
-            },
-        },
-    ]
+        {"id": "obj1", "source_text": _GRISWOLD_SOURCES[0], "facet": "motivation", "guidance": ["people affected", "technical gap", "prior-solution limitation", "research question"]},
+        {"id": "obj2", "source_text": _GRISWOLD_SOURCES[1], "facet": "proposed_solution", "guidance": ["hypothesis", "mechanism", "design rationale", "separate claims from results"]},
+        {"id": "obj3", "source_text": _GRISWOLD_SOURCES[2], "facet": "evaluation", "guidance": ["experiment or argument", "baseline and metric", "reported benefits", "reported problems"]},
+        {"id": "obj4", "source_text": _GRISWOLD_SOURCES[3], "facet": "contributions", "guidance": ["explicit contribution list", "claimed novelty", "concrete artifact or finding"]},
+        {"id": "obj5", "source_text": _GRISWOLD_SOURCES[4], "facet": "future_directions", "guidance": ["future work", "limitations implying next steps", "open extensions"]},
+    ],
 })
 
 
@@ -562,25 +543,23 @@ Use this opt-in Griswold reading agreement for extraction:
 
 {agreement_to_text(GRISWOLD_AGREEMENT)}
 
-Objectives 1, 2, 3, 5, and 6 are extraction tasks. After highlights exist,
-handle Griswold questions 4, 7, and 8 with the critical_analysis prompt:
-the reader's analysis, open questions, and take-away message require reasoning
+Griswold questions 1, 2, 3, 5, and 6 are represented as extraction
+objectives. Route questions 4, 7, and 8 to critical_analysis because the
+reader's analysis, open questions, and take-away message require reasoning
 that must remain distinct from what the paper explicitly states.
 """
 
 
 def grounded_qa_prompt(question: str) -> str:
     return f"""\
-Answer this question about the active PaperTrail paper:
+Answer this question about the active paper: {question}
 
-{question}
-
-Call find_passages with the question before answering. Use only returned paper
-text or current highlights as evidence. Every substantive claim must cite a
-specific section and page in the form [Section title, p. N]. If the retrieved
-passages do not answer the question, say that the paper does not address it.
-Do not fill the gap from general knowledge without labeling it as outside the
-paper.
+Use only the primary context and supplementary passages supplied by the
+client. Every answer claim must be supported by a verbatim quote and cite its
+specific section and page as [Section title, p. N]. Include a short Supporting
+sources list containing those quotes. If the supplied evidence does not
+support an answer, say exactly: "The paper does not directly address this."
+Never fill an evidence gap from general knowledge.
 """
 
 
@@ -588,12 +567,11 @@ def guided_reading_prompt(goal: str = "Understand the paper") -> str:
     return f"""\
 Create a concrete reading path for this goal: {goal}
 
-Read papertrail://paper/sections and papertrail://highlights/current. Return an
-ordered path. Every step must name one specific section, quote one current
-highlight from that section, give its page, and explain why that exact passage
-is the next useful step. Do not give generic advice or name a section without
-a highlight. If there are no highlights, say that a highlight-grounded path
-cannot yet be made.
+Use only the section headings, current highlights, and gap passages supplied
+by the client. Every step must name one specific section, quote one specific
+highlight, give its page, and explain why that exact highlight is the next
+useful step. Do not give generic reading advice. If the supplied highlights
+cannot support a path, say so rather than inventing one.
 """
 
 

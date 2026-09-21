@@ -2,26 +2,29 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from .agent_layer import (
     agreement_from_model,
     agreement_to_text,
-    build_agreement_fallback,
     build_agreement_prompt,
+    criterion_tagging_prompt,
+    criterion_tags_from_model,
     critical_analysis_prompt,
     find_relevant_passages,
     griswold_prompt,
     grounded_qa_prompt,
     guided_reading_prompt,
+    highlight_tagging_prompt,
+    highlight_tags_from_model,
     paper_comparison_prompt,
-    refine_agreement_fallback,
-    refine_agreement_prompt,
-    refined_agreement_from_model,
+    refinement_diff_from_model,
+    refinement_prompt,
 )
+from .model import AgentModel
 from .store import ExportStore
 
 
@@ -34,49 +37,7 @@ mcp = MCPServer(
     ),
 )
 store = ExportStore.from_env()
-
-
-class AgentModel:
-    """Optional OpenAI-compatible model used by MCP tools and the demo CLI."""
-
-    def __init__(self) -> None:
-        self.api_key = os.environ.get("PAPERTRAIL_AGENT_API_KEY") or os.environ.get(
-            "CUSTOM_API_KEY", ""
-        )
-        self.base_url = os.environ.get("PAPERTRAIL_AGENT_BASE_URL") or os.environ.get(
-            "CUSTOM_BASE_URL", ""
-        )
-        self.model = os.environ.get("PAPERTRAIL_AGENT_MODEL") or os.environ.get(
-            "CUSTOM_MODEL_ID", ""
-        )
-
-    @property
-    def configured(self) -> bool:
-        return bool(self.api_key and self.model)
-
-    async def complete(self, prompt: str) -> str:
-        if not self.configured:
-            raise RuntimeError("No agent model is configured")
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url or None,
-            timeout=60,
-            max_retries=0,
-        )
-        try:
-            response = await client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-            )
-            return (response.choices[0].message.content or "").strip()
-        finally:
-            await client.close()
-
-
-agent_model = AgentModel()
+agent_model = AgentModel.from_env()
 
 
 def _paper_list_for_agreement(sections_payload: dict[str, Any]) -> str:
@@ -91,18 +52,40 @@ def _paper_list_for_agreement(sections_payload: dict[str, Any]) -> str:
     return f"- {document}\n  Sections: " + "; ".join(titles)
 
 
-async def _build(focus_text: str) -> tuple[dict[str, Any], str, str | None]:
+async def _build(focus_text: str) -> dict[str, Any]:
     sections = await store.paper_sections()
-    if agent_model.configured:
+    prompt = build_agreement_prompt(
+        focus_text, _paper_list_for_agreement(sections),
+    )
+    raw = await agent_model.complete(
+        prompt,
+        operation="build_agreement",
+    )
+    try:
+        return agreement_from_model(focus_text, raw)
+    except Exception as first_error:
+        correction = f"""{prompt}
+
+Your previous response was rejected by the structural validator:
+{first_error}
+
+Previous response:
+{raw}
+
+Regenerate the JSON once. Preserve focus_raw byte for byte and correct only
+the structural or source-span error described above.
+"""
+        retried = await agent_model.complete(
+            correction,
+            operation="build_agreement validation retry",
+        )
         try:
-            raw = await agent_model.complete(
-                build_agreement_prompt(focus_text, _paper_list_for_agreement(sections))
-            )
-            return agreement_from_model(focus_text, raw), "llm", None
-        except Exception as exc:
-            fallback = build_agreement_fallback(focus_text)
-            return fallback, "deterministic_fallback", str(exc)
-    return build_agreement_fallback(focus_text), "deterministic_fallback", None
+            return agreement_from_model(focus_text, retried)
+        except Exception as retry_error:
+            raise RuntimeError(
+                "build_agreement returned invalid agreements twice: "
+                f"{retry_error}"
+            ) from retry_error
 
 
 @mcp.resource(
@@ -124,8 +107,8 @@ async def paper_sections() -> dict[str, Any]:
     name="current_highlights",
     title="Current highlights",
     description=(
-        "The currently shown section-scoped highlights, selected only from the exact highlight "
-        "records already present in the exported Map JSON."
+        "The currently shown Map JSON highlights with cached objective, facet, and salience tags. "
+        "Tags are created by one disclosed LLM enrichment pass; reads and filtering are deterministic."
     ),
     mime_type="application/json",
 )
@@ -138,8 +121,7 @@ async def current_highlights() -> dict[str, Any]:
     name="current_agreement",
     title="Current agreement",
     description=(
-        "The active structured extraction agreement, including exact focus text and per-objective "
-        "guidance. Legacy plain-text agreements are labeled rather than silently converted."
+        "The active focus_raw/objectives agreement and deterministic view-filter state."
     ),
     mime_type="application/json",
 )
@@ -163,64 +145,95 @@ async def session_info() -> dict[str, Any]:
 @mcp.tool(
     title="Build agreement",
     description=(
-        "Split a focus into exact, verbatim objectives and add extraction guidance. The tool rejects "
-        "model output that rewrites, reorders, or drops focus words."
+        "Use an LLM to build exact source-text objectives and system guidance, then tag every existing "
+        "highlight once with facet and salience. Requires a configured model and has no fallback."
     ),
 )
 async def build_agreement(focus_text: str) -> dict[str, Any]:
-    agreement, generation, fallback_reason = await _build(focus_text)
-    await store.save_built_agreement(agreement, focus_text)
+    try:
+        agreement = await _build(focus_text)
+        highlight_inputs = store.highlight_inputs()
+        raw_tags = await agent_model.complete(
+            highlight_tagging_prompt(agreement, highlight_inputs),
+            operation="highlight tagging",
+        )
+        tags = highlight_tags_from_model(
+            raw_tags, [item["id"] for item in highlight_inputs], agreement,
+        )
+        await store.save_built_agreement(
+            agreement, tags, model_name=agent_model.model,
+        )
+    except Exception as exc:
+        raise ToolError(str(exc)) from exc
     return {
         "agreement": agreement,
         "agreement_text": agreement_to_text(agreement),
-        "generation": generation,
-        "fallback_reason": fallback_reason,
+        "generation": "llm",
         "focus_preserved": True,
-        "next_step": "The agreement is saved in this standalone demo's local state.",
+        "highlight_tagging": {
+            "tagged": len(tags),
+            "fields": ["objective_id", "facet", "salience"],
+            "cached": True,
+            "re_extracted": False,
+        },
+        "next_step": "The agreement and cached highlight tags are saved in local state.",
     }
 
 
 @mcp.tool(
     title="Update agreement",
     description=(
-        "Translate a refinement request into guidance changes, preserve every objective verbatim, "
-        "then re-filter and re-rank only the highlights already present in Map JSON. This isolated "
-        "demo cannot re-run extraction or discover new evidence."
+        "Use an LLM only to translate a request into the fixed refinement operation set. Filtering "
+        "then runs deterministically on cached facet and salience tags. A new semantic criterion "
+        "causes one disclosed tagging pass. No extraction runs and no new highlight can appear."
     ),
 )
 async def update_agreement(refinement: str) -> dict[str, Any]:
-    current = await store.current_agreement()
-    agreement = current.get("agreement")
-    focus_text = current.get("focus_text") or ""
-    if not agreement:
-        if not focus_text:
+    try:
+        current = await store.current_agreement()
+        agreement = current.get("agreement")
+        if not agreement:
             raise ValueError(
-                "No structured current agreement is available. Call build_agreement with the focus first."
+                "No current agreement is available. Call build_agreement first; an LLM is required."
             )
-        agreement, _generation, _reason = await _build(focus_text)
 
-    generation = "deterministic_fallback"
-    fallback_reason = None
-    if agent_model.configured:
-        try:
-            raw = await agent_model.complete(refine_agreement_prompt(agreement, refinement))
-            updated = refined_agreement_from_model(agreement, raw)
-            generation = "llm"
-        except Exception as exc:
-            updated = refine_agreement_fallback(agreement, refinement)
-            fallback_reason = str(exc)
-    else:
-        updated = refine_agreement_fallback(agreement, refinement)
-
-    filter_report = await store.refilter_with_agreement(
-        updated, focus_text, refinement,
-    )
+        known_facets = store.known_facets(agreement)
+        raw_diff = await agent_model.complete(
+            refinement_prompt(agreement, refinement, known_facets),
+            operation="update_agreement refinement translation",
+        )
+        diff = refinement_diff_from_model(raw_diff, agreement)
+        criteria = store.criteria_needed(agreement, diff["operations"])
+        criterion_updates = None
+        if criteria:
+            highlight_inputs = store.highlight_inputs()
+            raw_criteria = await agent_model.complete(
+                criterion_tagging_prompt(criteria, highlight_inputs),
+                operation="new refinement criterion tagging",
+            )
+            criterion_updates = criterion_tags_from_model(
+                raw_criteria,
+                [item["id"] for item in highlight_inputs],
+                criteria,
+            )
+        filter_report = await store.apply_refinement(
+            agreement,
+            diff["operations"],
+            refinement,
+            criterion_updates,
+            model_name=agent_model.model,
+        )
+    except Exception as exc:
+        raise ToolError(str(exc)) from exc
+    filtered_highlights = await store.ranked_highlights()
     return {
-        "agreement": updated,
-        "agreement_text": agreement_to_text(updated),
-        "generation": generation,
-        "fallback_reason": fallback_reason,
+        "agreement": agreement,
+        "agreement_text": agreement_to_text(agreement),
+        "filter_state": filter_report["filter_state"],
+        "operations": diff["operations"],
+        "generation": "llm_diff_then_deterministic_filter",
         "objectives_preserved": True,
+        "filtered_highlights": filtered_highlights,
         "highlight_filter": filter_report,
         "re_extracted": False,
     }

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from papertrail_agent_demo import agent_layer
+from papertrail_agent_demo.model import AgentModel
 from papertrail_agent_demo.store import ExportConfig, ExportStore
 
 
@@ -51,86 +52,156 @@ def _store(tmp_path: Path) -> ExportStore:
     ))
 
 
-def test_single_focus_stays_verbatim_and_single():
-    focus = "Explain why the authors chose this baseline."
-    agreement = agent_layer.build_agreement_fallback(focus)
-    assert [item["original_text"] for item in agreement["objectives"]] == [focus]
-
-
-def test_compound_focus_splits_into_exact_source_spans():
-    focus = "What problem does the paper solve and what is its main result?"
-    agreement = agent_layer.build_agreement_fallback(focus)
-    assert [item["original_text"] for item in agreement["objectives"]] == [
-        "What problem does the paper solve",
-        "and what is its main result?",
-    ]
-    assert agent_layer.validate_agreement(agreement, focus_text=focus) == agreement
-
-
-def test_multiline_focus_keeps_every_word_and_original_order():
-    focus = "Read for:\n1. What problem matters?\n2. How is the system evaluated?"
-    agreement = agent_layer.build_agreement_fallback(focus)
-    originals = [item["original_text"] for item in agreement["objectives"]]
-    assert originals == [
-        "Read for:\n1. What problem matters?",
-        "2. How is the system evaluated?",
-    ]
-
-
-def test_model_paraphrase_and_dropped_dimension_are_rejected():
-    focus = "Find the motivation.\nFind the evaluation."
-    paraphrased = {
+def _agreement() -> dict:
+    return {
+        "focus_raw": "I care about why they chose this dataset",
         "objectives": [{
-            "original_text": "Explain the motivation.",
-            "extraction_guidance": {
-                "look_in": ["introduction"],
-                "signals": ["problem"],
-                "exclude": ["results"],
-                "edge_cases": "Keep implicit motivation.",
-            },
-        }]
+            "id": "obj1",
+            "source_text": "why they chose this dataset",
+            "facet": "evaluation",
+            "guidance": [
+                "dataset choice",
+                "dataset justification",
+                "dataset limitations",
+            ],
+        }],
     }
-    with pytest.raises(ValueError, match="exact ordered focus substring"):
-        agent_layer.validate_agreement(paraphrased, focus_text=focus)
 
-    dropped = agent_layer.build_agreement_fallback("Find the motivation.")
-    with pytest.raises(ValueError, match="dropped, added, or reordered"):
+
+def _tags() -> dict[str, dict]:
+    return {
+        "0:0": {"objective_id": "obj1", "facet": "evaluation", "salience": 0.9},
+        "0:1": {"objective_id": "other", "facet": "other", "salience": 0.2},
+        "0:2": {"objective_id": "obj1", "facet": "evaluation", "salience": 0.7},
+    }
+
+
+def test_single_goal_agreement_accepts_system_added_expertise():
+    agreement = agent_layer.validate_agreement(
+        _agreement(), focus_text=_agreement()["focus_raw"],
+    )
+    assert len(agreement["objectives"]) == 1
+    assert agreement["objectives"][0]["guidance"] == [
+        "dataset choice", "dataset justification", "dataset limitations",
+    ]
+
+
+def test_validation_rejects_paraphrase_reordering_and_dropped_content():
+    focus = "Find the motivation and the evaluation evidence."
+    paraphrase = {
+        "focus_raw": focus,
+        "objectives": [{
+            "id": "obj1",
+            "source_text": "Explain the motivation",
+            "facet": "motivation",
+            "guidance": ["problem framing"],
+        }],
+    }
+    with pytest.raises(ValueError, match="exact ordered"):
+        agent_layer.validate_agreement(paraphrase, focus_text=focus)
+
+    dropped = {
+        "focus_raw": focus,
+        "objectives": [{
+            "id": "obj1",
+            "source_text": "the motivation",
+            "facet": "motivation",
+            "guidance": ["problem framing"],
+        }],
+    }
+    with pytest.raises(ValueError, match="do not cover substantive"):
         agent_layer.validate_agreement(dropped, focus_text=focus)
 
+    reordered = {
+        "focus_raw": focus,
+        "objectives": [{
+            "id": "obj1",
+            "source_text": "the evaluation evidence",
+            "facet": "evaluation",
+            "guidance": ["reported result"],
+        }, {
+            "id": "obj2",
+            "source_text": "the motivation",
+            "facet": "motivation",
+            "guidance": ["problem framing"],
+        }],
+    }
+    with pytest.raises(ValueError, match="exact ordered"):
+        agent_layer.validate_agreement(reordered, focus_text=focus)
 
-def test_refinement_changes_guidance_and_freezes_objectives():
-    focus = "Find the proposed solution."
-    current = agent_layer.build_agreement_fallback(focus)
-    updated = agent_layer.refine_agreement_fallback(
-        current, "Remove implementation details and only keep top 5.",
+
+def test_build_prompt_explicitly_prohibits_forced_splitting():
+    prompt = agent_layer.build_agreement_prompt("Explain one dataset choice")
+    assert "exactly one objective" in prompt
+    assert "Positive multi-goal example" in prompt
+    assert "Negative example" in prompt
+
+
+def test_missing_model_has_no_agreement_fallback():
+    model = AgentModel()
+    with pytest.raises(RuntimeError, match="there is no deterministic fallback"):
+        model.require("build_agreement")
+    assert not hasattr(agent_layer, "build_agreement_fallback")
+
+
+def test_refinement_diff_accepts_only_fixed_operations():
+    agreement = _agreement()
+    result = agent_layer.refinement_diff_from_model(json.dumps({
+        "operations": [
+            {"op": "set_limit", "value": 5},
+            {"op": "add_exclude", "facet": "Implementation Details"},
+            {"op": "disable_facet", "id": "obj1"},
+            {"op": "change_density", "facet": "evaluation", "level": "low"},
+        ],
+    }), agreement)
+    assert result["operations"][1]["facet"] == "implementation_details"
+    with pytest.raises(ValueError, match="unsupported refinement operation"):
+        agent_layer.refinement_diff_from_model(
+            '{"operations":[{"op":"rewrite_objective"}]}', agreement,
+        )
+
+
+def test_highlight_tags_validate_full_pool_and_objective_facet():
+    response = json.dumps({"tags": [
+        {"id": "0:0", "objective_id": "obj1", "facet": "evaluation", "salience": 0.8},
+        {"id": "0:1", "objective_id": "other", "facet": "other", "salience": 0.1},
+    ]})
+    result = agent_layer.highlight_tags_from_model(
+        response, ["0:0", "0:1"], _agreement(),
     )
-    assert updated["objectives"][0]["original_text"] == focus
-    guidance = updated["objectives"][0]["extraction_guidance"]
-    assert "implementation details" in guidance["exclude"]
-    assert "at most 5" in guidance["edge_cases"]
+    assert result["0:0"]["salience"] == 0.8
+    with pytest.raises(ValueError, match="must match"):
+        agent_layer.highlight_tags_from_model(json.dumps({"tags": [
+            {"id": "0:0", "objective_id": "obj1", "facet": "method", "salience": 0.8},
+        ]}), ["0:0"], _agreement())
 
 
-def test_refine_filters_existing_pool_without_reextracting(tmp_path):
+def test_store_filters_cached_tags_deterministically_without_reextracting(tmp_path):
     store = _store(tmp_path)
-    focus = "Find the proposed solution."
-    current = agent_layer.build_agreement_fallback(focus)
-    asyncio.run(store.save_built_agreement(current, focus))
-    updated = agent_layer.refine_agreement_fallback(
-        current, "Remove implementation details and only keep top 1.",
-    )
-    report = asyncio.run(store.refilter_with_agreement(
-        updated, focus, "Remove implementation details and only keep top 1.",
+    agreement = _agreement()
+    asyncio.run(store.save_built_agreement(agreement, _tags(), model_name="mock"))
+    report = asyncio.run(store.apply_refinement(
+        agreement,
+        [
+            {"op": "add_exclude", "facet": "implementation_details"},
+            {"op": "set_limit", "value": 1},
+        ],
+        "Remove implementation details and keep the top one",
+        {
+            "0:0": {"implementation_details": False},
+            "0:1": {"implementation_details": True},
+            "0:2": {"implementation_details": False},
+        },
+        model_name="mock",
     ))
-    highlights = asyncio.run(store.current_highlights())
-    visible = [
-        item
-        for section in highlights["sections"]
-        for item in section["highlights"]
-    ]
+    highlights = asyncio.run(store.ranked_highlights())
     assert report["re_extracted"] is False
-    assert report["pool_size"] == 3
-    assert report["kept"] == 1
-    assert "Implementation uses" not in visible[0]["quote"]
+    assert report["criteria_tagging_ran"] is True
+    assert [item["quote"] for item in highlights] == [
+        "The system addresses a practical deployment problem.",
+    ]
+    assert highlights[0]["facet"] == "evaluation"
+    assert highlights[0]["salience"] == 0.9
 
 
 def test_find_passages_returns_section_and_page():

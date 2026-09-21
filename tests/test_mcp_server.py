@@ -5,7 +5,37 @@ import pytest
 from mcp import Client
 
 from papertrail_agent_demo import server
+from papertrail_agent_demo.runner import tool_value
 from papertrail_agent_demo.store import ExportConfig, ExportStore
+
+
+class FakeModel:
+    def __init__(self, responses=()):
+        self.responses = list(responses)
+        self.prompts: list[tuple[str, str]] = []
+        self.model = "mock-model"
+        self.configured = True
+
+    def require(self, operation: str) -> None:
+        return None
+
+    async def complete(self, prompt: str, *, operation: str = "operation") -> str:
+        self.prompts.append((operation, prompt))
+        if not self.responses:
+            raise AssertionError(f"Unexpected model call: {operation}")
+        return self.responses.pop(0)
+
+
+class MissingModel(FakeModel):
+    def __init__(self):
+        super().__init__()
+        self.model = ""
+        self.configured = False
+
+    async def complete(self, prompt: str, *, operation: str = "operation") -> str:
+        raise RuntimeError(
+            f"{operation} requires an LLM; there is no deterministic fallback."
+        )
 
 
 def _map_payload() -> dict:
@@ -44,6 +74,25 @@ def _map_payload() -> dict:
     }
 
 
+def _agreement_response() -> str:
+    return json.dumps({
+        "focus_raw": "Find the motivation.",
+        "objectives": [{
+            "id": "obj1",
+            "source_text": "Find the motivation.",
+            "facet": "motivation",
+            "guidance": ["problem framing", "practical need"],
+        }],
+    })
+
+
+def _tag_response() -> str:
+    return json.dumps({"tags": [
+        {"id": "0:0", "objective_id": "obj1", "facet": "motivation", "salience": 0.95},
+        {"id": "0:1", "objective_id": "other", "facet": "other", "salience": 0.2},
+    ]})
+
+
 @pytest.fixture
 def offline_mcp(tmp_path, monkeypatch):
     map_path = tmp_path / "paper.map.json"
@@ -53,8 +102,6 @@ def offline_mcp(tmp_path, monkeypatch):
         state_path=tmp_path / "state.json",
     ))
     monkeypatch.setattr(server, "store", store)
-    monkeypatch.setattr(server.agent_model, "api_key", "")
-    monkeypatch.setattr(server.agent_model, "model", "")
     return server.mcp
 
 
@@ -80,19 +127,28 @@ async def test_mcp_exposes_the_exact_requested_surface(offline_mcp):
 
 
 @pytest.mark.asyncio
-async def test_mcp_build_refine_filter_and_find_round_trip(offline_mcp):
+async def test_build_tags_once_then_refine_filters_without_extraction(
+    offline_mcp, monkeypatch,
+):
+    model = FakeModel([
+        _agreement_response(),
+        _tag_response(),
+        '{"operations":[{"op":"set_limit","value":1}]}',
+    ])
+    monkeypatch.setattr(server, "agent_model", model)
     async with Client(offline_mcp) as client:
-        built = await client.call_tool(
+        built = tool_value(await client.call_tool(
             "build_agreement", {"focus_text": "Find the motivation."},
-        )
-        assert built.is_error is False
+        ))
+        assert built["agreement"]["focus_raw"] == "Find the motivation."
+        assert built["highlight_tagging"]["tagged"] == 2
 
-        refined = await client.call_tool(
-            "update_agreement",
-            {"refinement": "Remove implementation details and only keep top 1."},
-        )
-        assert refined.is_error is False
-        assert refined.structured_content["re_extracted"] is False
+        refined = tool_value(await client.call_tool(
+            "update_agreement", {"refinement": "Only keep the top one."},
+        ))
+        assert refined["re_extracted"] is False
+        assert refined["highlight_filter"]["criteria_tagging_ran"] is False
+        assert len(refined["filtered_highlights"]) == 1
 
         highlights = await client.read_resource("papertrail://highlights/current")
         current = json.loads(highlights.contents[0].text)
@@ -101,15 +157,96 @@ async def test_mcp_build_refine_filter_and_find_round_trip(offline_mcp):
             for section in current["sections"]
             for item in section["highlights"]
         ]
-        assert len(visible) == 1
+        assert visible[0]["facet"] == "motivation"
+        assert visible[0]["salience"] == 0.95
+    assert [item[0] for item in model.prompts] == [
+        "build_agreement", "highlight tagging",
+        "update_agreement refinement translation",
+    ]
 
-        found = await client.call_tool(
+
+@pytest.mark.asyncio
+async def test_new_refine_criterion_gets_one_disclosed_tagging_pass(
+    offline_mcp, monkeypatch,
+):
+    model = FakeModel([
+        _agreement_response(),
+        _tag_response(),
+        '{"operations":[{"op":"add_exclude","facet":"implementation_details"}]}',
+        json.dumps({"criteria": [
+            {"id": "0:0", "matches": {"implementation_details": False}},
+            {"id": "0:1", "matches": {"implementation_details": True}},
+        ]}),
+        '{"operations":[{"op":"remove_exclude","facet":"implementation_details"}]}',
+        '{"operations":[{"op":"add_exclude","facet":"implementation_details"}]}',
+    ])
+    monkeypatch.setattr(server, "agent_model", model)
+    async with Client(offline_mcp) as client:
+        await client.call_tool(
+            "build_agreement", {"focus_text": "Find the motivation."},
+        )
+        first = tool_value(await client.call_tool(
+            "update_agreement", {"refinement": "Remove implementation details."},
+        ))
+        assert first["highlight_filter"]["criteria_tagging_ran"] is True
+        assert len(first["filtered_highlights"]) == 1
+
+        await client.call_tool(
+            "update_agreement", {"refinement": "Allow implementation details."},
+        )
+        third = tool_value(await client.call_tool(
+            "update_agreement", {"refinement": "Remove implementation details again."},
+        ))
+        assert third["highlight_filter"]["criteria_tagging_ran"] is False
+        assert len(third["filtered_highlights"]) == 1
+    assert sum(op == "new refinement criterion tagging" for op, _ in model.prompts) == 1
+
+
+@pytest.mark.asyncio
+async def test_build_errors_clearly_without_model(offline_mcp, monkeypatch):
+    monkeypatch.setattr(server, "agent_model", MissingModel())
+    async with Client(offline_mcp) as client:
+        result = await client.call_tool(
+            "build_agreement", {"focus_text": "Find the motivation."},
+        )
+    assert result.is_error is True
+    assert "no deterministic fallback" in str(result.content)
+
+
+@pytest.mark.asyncio
+async def test_build_rejects_invalid_source_and_regenerates_once(
+    offline_mcp, monkeypatch,
+):
+    invalid = json.dumps({
+        "focus_raw": "Find the motivation.",
+        "objectives": [{
+            "id": "obj1",
+            "source_text": "Explain the motivation.",
+            "facet": "motivation",
+            "guidance": ["problem framing"],
+        }],
+    })
+    model = FakeModel([invalid, _agreement_response(), _tag_response()])
+    monkeypatch.setattr(server, "agent_model", model)
+    async with Client(offline_mcp) as client:
+        result = await client.call_tool(
+            "build_agreement", {"focus_text": "Find the motivation."},
+        )
+    assert result.is_error is False
+    assert [operation for operation, _ in model.prompts] == [
+        "build_agreement", "build_agreement validation retry", "highlight tagging",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_find_passages_remains_deterministic(offline_mcp):
+    async with Client(offline_mcp) as client:
+        found = tool_value(await client.call_tool(
             "find_passages",
             {"question": "What practical problem is addressed?", "limit": 3},
-        )
-        assert found.is_error is False
-        assert found.structured_content["addressed"] is True
-        assert found.structured_content["passages"][0]["section"] == "Introduction"
+        ))
+    assert found["addressed"] is True
+    assert found["passages"][0]["section"] == "Introduction"
 
 
 def test_runtime_source_has_no_sibling_service_coupling():
@@ -118,6 +255,5 @@ def test_runtime_source_has_no_sibling_service_coupling():
         path.read_text(encoding="utf-8")
         for path in source_root.rglob("*.py")
     )
-    assert "papertrail-main" not in combined
-    assert "ui/backend" not in combined
-    assert "PAPERTRAIL_API_URL" not in combined
+    forbidden = ["papertrail-main", "ui/backend", "PAPERTRAIL_API_URL"]
+    assert not [term for term in forbidden if term in combined]

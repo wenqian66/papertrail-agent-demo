@@ -1,4 +1,4 @@
-"""Offline storage and search adapters for exported PaperTrail bundles."""
+"""Deterministic storage, PDF recovery, and tagged-highlight filtering."""
 
 from __future__ import annotations
 
@@ -11,27 +11,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .agent_layer import _focus_tokens, validate_agreement
+from .agent_layer import validate_agreement
 
 
-_LIMIT = re.compile(r"\bat most\s+(\d+)\b", re.IGNORECASE)
-_FILTER_STOP_WORDS = {
-    "a", "an", "and", "as", "at", "be", "by", "for", "from", "in",
-    "is", "it", "keep", "no", "not", "of", "on", "only", "or", "the",
-    "their", "to", "with", "without",
-}
-_CATEGORY_TERMS = {
-    "implementation detail": {
-        "implementation", "implemented", "code", "hyperparameter", "optimizer",
-        "batch", "epoch", "hardware", "runtime", "architecture",
-    },
-    "method detail": {
-        "method", "algorithm", "implementation", "procedure", "architecture",
-    },
-    "results number": {
-        "accuracy", "score", "percent", "result", "improvement", "table",
-    },
-}
+_DENSITY_FLOORS = {"low": 0.80, "medium": 0.50, "high": 0.20}
 
 
 @dataclass(frozen=True)
@@ -70,7 +53,7 @@ class ExportConfig:
 
 
 class ExportStore:
-    """Read one Map JSON export and optional paired PDF, with local demo state."""
+    """Read one export bundle and persist only local agent-layer state."""
 
     def __init__(self, config: ExportConfig):
         self.config = config
@@ -120,6 +103,7 @@ class ExportStore:
             for highlight_index, highlight in enumerate(section.get("highlights") or []):
                 pool.append({
                     "id": f"{section_index}:{highlight_index}",
+                    "order": len(pool),
                     "section_index": section_index,
                     "highlight_index": highlight_index,
                     "section": section.get("title") or "",
@@ -129,12 +113,15 @@ class ExportStore:
                 })
         return pool
 
-    def _visible_ids(self) -> set[str]:
-        state = self._read_state()
-        stored = state.get("visible_highlight_ids")
-        if isinstance(stored, list):
-            return {str(value) for value in stored}
-        return {item["id"] for item in self._highlight_pool()}
+    def highlight_inputs(self) -> list[dict[str, Any]]:
+        """Compact, immutable pool sent to disclosed LLM tagging passes."""
+        return [{
+            "id": item["id"],
+            "section": item["section"],
+            "page": item["highlight"].get("page"),
+            "quote": item["highlight"].get("quote") or "",
+            "note": item["highlight"].get("note") or "",
+        } for item in self._highlight_pool()]
 
     async def paper_sections(self) -> dict[str, Any]:
         if self._sections_cache is not None:
@@ -171,32 +158,66 @@ class ExportStore:
         }
         return self._sections_cache
 
+    def _visible_ids(self, state: dict[str, Any]) -> list[str]:
+        stored = state.get("visible_highlight_ids")
+        if isinstance(stored, list):
+            return [str(value) for value in stored]
+        return [item["id"] for item in self._highlight_pool()]
+
+    def _enriched_highlight(
+        self, item: dict[str, Any], state: dict[str, Any], rank: int | None,
+    ) -> dict[str, Any]:
+        base_tag = (state.get("highlight_tags") or {}).get(item["id"]) or {}
+        criterion_map = (state.get("criterion_tags") or {}).get(item["id"]) or {}
+        return {
+            **item["highlight"],
+            "objective_id": base_tag.get("objective_id"),
+            "facet": base_tag.get("facet"),
+            "salience": base_tag.get("salience"),
+            "criterion_tags": dict(criterion_map),
+            "rank": rank,
+        }
+
     async def current_highlights(self) -> dict[str, Any]:
         exported = self._load_map()
-        visible = self._visible_ids()
+        state = self._read_state()
+        visible_ids = self._visible_ids(state)
+        visible = set(visible_ids)
+        ranks = {highlight_id: index + 1 for index, highlight_id in enumerate(visible_ids)}
         sections: list[dict[str, Any]] = []
         for section_index, section in enumerate(exported.get("sections") or []):
-            highlights = [
-                highlight
-                for highlight_index, highlight in enumerate(section.get("highlights") or [])
-                if f"{section_index}:{highlight_index}" in visible
-            ]
+            highlights: list[dict[str, Any]] = []
+            for highlight_index, _highlight in enumerate(section.get("highlights") or []):
+                highlight_id = f"{section_index}:{highlight_index}"
+                if highlight_id not in visible:
+                    continue
+                item = next(
+                    pool_item for pool_item in self._highlight_pool()
+                    if pool_item["id"] == highlight_id
+                )
+                highlights.append(self._enriched_highlight(item, state, ranks[highlight_id]))
+            highlights.sort(key=lambda item: item.get("rank") or 10**9)
             sections.append({
                 "title": section.get("title"),
                 "page_start": section.get("page_start"),
                 "page_end": section.get("page_end"),
                 "highlights": highlights,
             })
-        state = self._read_state()
+        pool_size = len(self._highlight_pool())
         return {
             "source": "map_json_filtered_view",
             "document": exported.get("document"),
             "sections": sections,
+            "tagging": state.get("tagging") or {
+                "status": "not_tagged",
+                "note": "Call build_agreement to run the required one-time LLM enrichment.",
+                "re_extracted": False,
+            },
             "filter_report": state.get("filter_report") or {
                 "mode": "unfiltered_export",
-                "pool_size": len(self._highlight_pool()),
-                "kept": len(visible),
-                "removed": len(self._highlight_pool()) - len(visible),
+                "pool_size": pool_size,
+                "kept": len(visible_ids),
+                "removed": pool_size - len(visible_ids),
                 "re_extracted": False,
             },
         }
@@ -209,6 +230,10 @@ class ExportStore:
             for highlight in section.get("highlights") or []
         ]
 
+    async def ranked_highlights(self) -> list[dict[str, Any]]:
+        highlights = await self.normalized_highlights()
+        return sorted(highlights, key=lambda item: item.get("rank") or 10**9)
+
     async def normalized_sections(self) -> list[dict[str, Any]]:
         payload = await self.paper_sections()
         return [{
@@ -220,24 +245,39 @@ class ExportStore:
         } for section in payload.get("sections") or []]
 
     async def save_built_agreement(
-        self, agreement: dict[str, Any], focus_text: str,
+        self, agreement: dict[str, Any], tags: dict[str, dict[str, Any]],
+        *, model_name: str = "",
     ) -> None:
-        checked = validate_agreement(agreement, focus_text=focus_text)
-        state = self._read_state()
-        history = list(state.get("history") or [])
-        if state.get("current_agreement"):
-            history.append(_history_entry(state))
+        checked = validate_agreement(agreement)
         pool_ids = [item["id"] for item in self._highlight_pool()]
+        if set(tags) != set(pool_ids):
+            raise ValueError("highlight tags must cover the complete exported pool")
+        previous = self._read_state()
+        history = list(previous.get("history") or [])
+        if previous.get("current_agreement"):
+            history.append(_history_entry(previous))
+        filter_state = _default_filter_state(checked)
         self._write_state({
-            "schema_version": 1,
-            "focus_text": focus_text,
+            "schema_version": 2,
+            "focus_raw": checked["focus_raw"],
             "current_agreement": checked,
             "event": "build_agreement",
             "updated_at": _now(),
             "history": history,
+            "highlight_tags": tags,
+            "criterion_tags": {},
+            "filter_state": filter_state,
             "visible_highlight_ids": pool_ids,
+            "tagging": {
+                "status": "tagged",
+                "base_tagged_at": _now(),
+                "model": model_name or None,
+                "criteria": [],
+                "re_extracted": False,
+                "note": "Existing Map JSON highlights were enriched once with facet and salience tags.",
+            },
             "filter_report": {
-                "mode": "unfiltered_export",
+                "mode": "unfiltered_tagged_pool",
                 "pool_size": len(pool_ids),
                 "kept": len(pool_ids),
                 "removed": 0,
@@ -245,79 +285,129 @@ class ExportStore:
             },
         })
 
-    async def refilter_with_agreement(
-        self, agreement: dict[str, Any], focus_text: str, refinement: str,
-    ) -> dict[str, Any]:
-        checked = validate_agreement(agreement, focus_text=focus_text)
+    def known_facets(self, agreement: dict[str, Any]) -> list[str]:
         state = self._read_state()
-        history = list(state.get("history") or [])
-        if state.get("current_agreement"):
-            history.append(_history_entry(state))
+        known = {"other"}
+        known.update(_canonical_facet(item["facet"]) for item in agreement["objectives"])
+        known.update(
+            _canonical_facet(tag.get("facet") or "other")
+            for tag in (state.get("highlight_tags") or {}).values()
+        )
+        for matches in (state.get("criterion_tags") or {}).values():
+            known.update(matches)
+        return sorted(known)
 
-        exclusions = _agreement_exclusions(checked)
-        limit = _agreement_limit(checked)
-        ranked: list[tuple[float, int, dict[str, Any]]] = []
-        removed_by_rule: list[dict[str, str]] = []
-        objectives = checked["objectives"]
-        for order, item in enumerate(self._highlight_pool()):
-            highlight = item["highlight"]
-            searchable = " ".join(str(value or "") for value in (
-                item["section"], highlight.get("quote"), highlight.get("note"),
-                highlight.get("source"),
-            ))
-            matched = next((rule for rule in exclusions if _matches_exclusion(searchable, rule)), None)
-            if matched:
-                removed_by_rule.append({"id": item["id"], "rule": matched})
-                continue
-            score = _highlight_score(searchable, highlight, objectives)
-            ranked.append((score, order, item))
+    def criteria_needed(
+        self, agreement: dict[str, Any], operations: list[dict[str, Any]],
+    ) -> list[str]:
+        known = set(self.known_facets(agreement))
+        needed = {
+            operation["facet"]
+            for operation in operations
+            if operation["op"] in {"add_exclude", "change_density"}
+            and operation["facet"] not in known
+        }
+        return sorted(needed)
 
-        ranked.sort(key=lambda entry: (-entry[0], entry[1]))
-        removed_by_limit = 0
-        if limit is not None and len(ranked) > limit:
-            removed_by_limit = len(ranked) - limit
-            ranked = ranked[:limit]
-        visible_ids = [entry[2]["id"] for entry in ranked]
-        pool_size = len(self._highlight_pool())
+    async def apply_refinement(
+        self, agreement: dict[str, Any], operations: list[dict[str, Any]],
+        refinement: str,
+        criterion_updates: dict[str, dict[str, bool]] | None = None,
+        *, model_name: str = "",
+    ) -> dict[str, Any]:
+        checked = validate_agreement(agreement)
+        state = self._read_state()
+        if state.get("current_agreement") != checked:
+            raise RuntimeError("The cached agreement changed; rebuild before refining")
+        pool = self._highlight_pool()
+        pool_ids = [item["id"] for item in pool]
+        base_tags = state.get("highlight_tags") or {}
+        if set(base_tags) != set(pool_ids):
+            raise RuntimeError("Highlights are not tagged. Run build_agreement first.")
+
+        criterion_tags = {
+            highlight_id: dict(matches)
+            for highlight_id, matches in (state.get("criterion_tags") or {}).items()
+        }
+        if criterion_updates:
+            if set(criterion_updates) != set(pool_ids):
+                raise ValueError("criterion tags must cover the complete highlight pool")
+            for highlight_id, matches in criterion_updates.items():
+                criterion_tags.setdefault(highlight_id, {}).update(matches)
+
+        filter_state = _normalized_filter_state(
+            state.get("filter_state"), checked,
+        )
+        for operation in operations:
+            _apply_operation(filter_state, operation)
+
+        ranked, reasons = _filter_pool(pool, base_tags, criterion_tags, filter_state)
+        visible_ids = [item["id"] for item in ranked]
+        previous_history = list(state.get("history") or [])
+        previous_history.append(_history_entry(state))
+        tagging = dict(state.get("tagging") or {})
+        criteria = sorted({
+            criterion
+            for matches in criterion_tags.values()
+            for criterion in matches
+        })
+        tagging.update({
+            "status": "tagged",
+            "criteria": criteria,
+            "re_extracted": False,
+        })
+        if criterion_updates:
+            tagging["criteria_tagged_at"] = _now()
+            tagging["criteria_model"] = model_name or None
         report = {
-            "mode": "existing_highlight_pool_refilter",
-            "pool_size": pool_size,
+            "mode": "cached_tag_filter",
+            "pool_size": len(pool),
             "kept": len(visible_ids),
-            "removed": pool_size - len(visible_ids),
-            "removed_by_exclude": len(removed_by_rule),
-            "removed_by_limit": removed_by_limit,
-            "exclude_rules": exclusions,
-            "limit": limit,
+            "removed": len(pool) - len(visible_ids),
+            "removed_by_reason": reasons,
+            "operations": operations,
+            "filter_state": filter_state,
             "refinement": refinement,
+            "criteria_tagging_ran": bool(criterion_updates),
             "re_extracted": False,
             "limitation": (
-                "This standalone demo only filters and re-ranks quotes already present in Map JSON. "
-                "It cannot discover new evidence or rerun PaperTrail extraction."
+                "Filtering can only narrow or reorder the existing Map JSON highlight pool; "
+                "it cannot discover new evidence."
             ),
         }
         self._write_state({
-            "schema_version": 1,
-            "focus_text": focus_text,
+            **state,
+            "schema_version": 2,
+            "focus_raw": checked["focus_raw"],
             "current_agreement": checked,
             "event": "update_agreement",
             "updated_at": _now(),
-            "history": history,
+            "history": previous_history,
+            "criterion_tags": criterion_tags,
+            "filter_state": filter_state,
             "visible_highlight_ids": visible_ids,
+            "tagging": tagging,
             "filter_report": report,
         })
         return report
 
     async def current_agreement(self) -> dict[str, Any]:
         state = self._read_state()
+        agreement = state.get("current_agreement")
+        if agreement:
+            try:
+                agreement = validate_agreement(agreement)
+            except (ValueError, json.JSONDecodeError):
+                agreement = None
         return {
             "source": "offline_state",
-            "focus_text": state.get("focus_text") or "",
-            "agreement": state.get("current_agreement"),
+            "agreement": agreement,
+            "filter_state": state.get("filter_state"),
             "updated_at": state.get("updated_at"),
             "history_count": len(state.get("history") or []),
             "message": (
-                None if state.get("current_agreement")
-                else "The export has no agreement. Call build_agreement to create one."
+                None if agreement
+                else "No current v2 agreement. Call build_agreement; an LLM is required."
             ),
         }
 
@@ -349,6 +439,7 @@ class ExportStore:
             }],
             "runs": list(runs.values()),
             "feedback_counts": verdicts,
+            "highlight_tagging": state.get("tagging"),
             "highlight_filter": state.get("filter_report"),
             "limitations": [
                 "Map JSON has no session id, focus, agreement, token counts, or full run history."
@@ -360,80 +451,126 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _canonical_facet(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_") or "other"
+
+
+def _default_filter_state(agreement: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "limit": None,
+        "excluded_facets": [],
+        "enabled_objective_ids": [item["id"] for item in agreement["objectives"]],
+        "density_by_facet": {},
+    }
+
+
+def _normalized_filter_state(
+    value: Any, agreement: dict[str, Any],
+) -> dict[str, Any]:
+    default = _default_filter_state(agreement)
+    if not isinstance(value, dict):
+        return default
+    objective_ids = {item["id"] for item in agreement["objectives"]}
+    enabled = value.get("enabled_objective_ids")
+    if not isinstance(enabled, list):
+        enabled = default["enabled_objective_ids"]
+    return {
+        "limit": value.get("limit") if isinstance(value.get("limit"), int) else None,
+        "excluded_facets": sorted({
+            _canonical_facet(item) for item in value.get("excluded_facets") or []
+            if isinstance(item, str)
+        }),
+        "enabled_objective_ids": [item for item in enabled if item in objective_ids],
+        "density_by_facet": {
+            _canonical_facet(key): level
+            for key, level in (value.get("density_by_facet") or {}).items()
+            if isinstance(key, str) and level in _DENSITY_FLOORS
+        },
+    }
+
+
+def _apply_operation(filter_state: dict[str, Any], operation: dict[str, Any]) -> None:
+    name = operation["op"]
+    if name == "set_limit":
+        filter_state["limit"] = operation["value"]
+    elif name == "add_exclude":
+        excluded = set(filter_state["excluded_facets"])
+        excluded.add(operation["facet"])
+        filter_state["excluded_facets"] = sorted(excluded)
+    elif name == "remove_exclude":
+        filter_state["excluded_facets"] = [
+            item for item in filter_state["excluded_facets"]
+            if item != operation["facet"]
+        ]
+    elif name == "enable_facet":
+        enabled = set(filter_state["enabled_objective_ids"])
+        enabled.add(operation["id"])
+        filter_state["enabled_objective_ids"] = sorted(enabled)
+    elif name == "disable_facet":
+        filter_state["enabled_objective_ids"] = [
+            item for item in filter_state["enabled_objective_ids"]
+            if item != operation["id"]
+        ]
+    elif name == "change_density":
+        filter_state["density_by_facet"][operation["facet"]] = operation["level"]
+
+
+def _matches_facet(
+    highlight_id: str, facet: str, base_tag: dict[str, Any],
+    criterion_tags: dict[str, dict[str, bool]],
+) -> bool:
+    return (
+        _canonical_facet(str(base_tag.get("facet") or "other")) == facet
+        or bool((criterion_tags.get(highlight_id) or {}).get(facet))
+    )
+
+
+def _filter_pool(
+    pool: list[dict[str, Any]], base_tags: dict[str, dict[str, Any]],
+    criterion_tags: dict[str, dict[str, bool]], filter_state: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    enabled = set(filter_state["enabled_objective_ids"])
+    excluded = set(filter_state["excluded_facets"])
+    density = filter_state["density_by_facet"]
+    reasons = {"disabled_objective": 0, "excluded_facet": 0, "density": 0, "limit": 0}
+    kept: list[dict[str, Any]] = []
+    for item in pool:
+        tag = base_tags[item["id"]]
+        objective_id = tag.get("objective_id")
+        if objective_id != "other" and objective_id not in enabled:
+            reasons["disabled_objective"] += 1
+            continue
+        if any(
+            _matches_facet(item["id"], facet, tag, criterion_tags)
+            for facet in excluded
+        ):
+            reasons["excluded_facet"] += 1
+            continue
+        salience = float(tag.get("salience") or 0.0)
+        failed_density = any(
+            _matches_facet(item["id"], facet, tag, criterion_tags)
+            and salience < _DENSITY_FLOORS[level]
+            for facet, level in density.items()
+        )
+        if failed_density:
+            reasons["density"] += 1
+            continue
+        kept.append(item)
+    kept.sort(key=lambda item: (-float(base_tags[item["id"]]["salience"]), item["order"]))
+    limit = filter_state.get("limit")
+    if isinstance(limit, int) and len(kept) > limit:
+        reasons["limit"] = len(kept) - limit
+        kept = kept[:limit]
+    return kept, reasons
+
+
 def _history_entry(state: dict[str, Any]) -> dict[str, Any]:
     return {
         "agreement": state.get("current_agreement"),
-        "focus_text": state.get("focus_text") or "",
+        "filter_state": state.get("filter_state"),
         "event": state.get("event"),
         "replaced_at": _now(),
     }
-
-
-def _agreement_exclusions(agreement: dict[str, Any]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for objective in agreement["objectives"]:
-        for rule in objective["extraction_guidance"]["exclude"]:
-            key = rule.casefold()
-            if key not in seen:
-                seen.add(key)
-                result.append(rule)
-    return result
-
-
-def _agreement_limit(agreement: dict[str, Any]) -> int | None:
-    limits: list[int] = []
-    for objective in agreement["objectives"]:
-        match = _LIMIT.search(objective["extraction_guidance"]["edge_cases"])
-        if match:
-            limits.append(max(1, int(match.group(1))))
-    return min(limits) if limits else None
-
-
-def _matches_exclusion(text: str, rule: str) -> bool:
-    lowered = text.casefold()
-    normalized_rule = rule.casefold().strip()
-    if normalized_rule and normalized_rule in lowered:
-        return True
-    rule_terms = {
-        token.casefold() for token in _focus_tokens(rule)
-        if len(token) > 2 and token.casefold() not in _FILTER_STOP_WORDS
-    }
-    expansions: set[str] = set()
-    for category, terms in _CATEGORY_TERMS.items():
-        if category in normalized_rule:
-            expansions.update(terms)
-    candidates = rule_terms | expansions
-    if not candidates:
-        return False
-    text_terms = {token.casefold() for token in _focus_tokens(text)}
-    required = 1 if expansions else min(2, len(rule_terms))
-    return len(candidates & text_terms) >= required
-
-
-def _highlight_score(
-    text: str, highlight: dict[str, Any], objectives: list[dict[str, Any]],
-) -> float:
-    lowered = text.casefold()
-    terms: set[str] = set()
-    for objective in objectives:
-        terms.update(
-            token.casefold() for token in _focus_tokens(objective["original_text"])
-            if len(token) > 2 and token.casefold() not in _FILTER_STOP_WORDS
-        )
-        for signal in objective["extraction_guidance"]["signals"]:
-            terms.update(
-                token.casefold() for token in _focus_tokens(signal)
-                if len(token) > 2 and token.casefold() not in _FILTER_STOP_WORDS
-            )
-    score = float(sum(min(lowered.count(term), 3) for term in terms))
-    if highlight.get("verdict") == "up":
-        score += 4.0
-    elif highlight.get("verdict") == "down":
-        score -= 4.0
-    if highlight.get("note"):
-        score += 0.25
-    return score
 
 
 def _normalized_with_offsets(text: str) -> tuple[str, list[int]]:

@@ -1,35 +1,41 @@
 # PaperTrail Agent Demo
 
-This is a fully standalone MCP server and interactive CLI for a PaperTrail
-export bundle. It reads Map JSON plus an optional paired highlighted PDF. It
-does not import from, modify, call, or require a running PaperTrail service.
-No `papertrail-main` checkout is required at build time or runtime.
+This is a standalone MCP server plus client-side chat runner for a PaperTrail
+export bundle. It reads Map JSON and an optional paired highlighted PDF. It
+does not import from, modify, call, or require the PaperTrail backend or its
+source tree. All paper data and state stay local to this project.
 
-The bundled default fixture contains:
+The default fixture is self-contained:
 
 - `fixtures/bundle/361011.361061.map.json`
 - `fixtures/bundle/361011.361061_highlighted.pdf`
 
 The highlight-only fixture is
-`fixtures/highlight-only/2901318.2901341.map.json`. Map JSON contains section
-titles, page ranges, and highlights. It does not contain section body text,
-tables, figures, PDF coordinates, confidence, agreements, or complete session
-metadata. When a paired PDF is available, this project uses the generic
-`pypdf` library to recover searchable page and section text.
+`fixtures/highlight-only/2901318.2901341.map.json`. Map JSON provides section
+titles, page ranges, and highlights. It omits section body text, so the bundled
+PDF is read with the generic `pypdf` library when available.
 
-## Run the demo
+## Run
 
 From this directory:
 
 ```bash
 uv sync --group test
+export PAPERTRAIL_AGENT_API_KEY=...
+export PAPERTRAIL_AGENT_MODEL=...
 uv run python -m papertrail_agent_demo
 ```
 
-The CLI supports:
+`PAPERTRAIL_AGENT_BASE_URL` is optional and can target a compatible local or
+hosted endpoint. Build, Refine, Ask when evidence exists, and Guide require a
+model. They fail clearly when one is not configured; there are no silent or
+rule-based answer/agreement fallbacks.
+
+The interactive client supports:
 
 ```text
 ask QUESTION
+ask-selected QUESTION || SELECTED PAPER TEXT
 build FOCUS
 refine REQUEST
 guide [GOAL]
@@ -40,7 +46,7 @@ session
 quit
 ```
 
-Run against the highlight-only fixture:
+Run with Map JSON only:
 
 ```bash
 uv run python -m papertrail_agent_demo \
@@ -53,7 +59,16 @@ Run the MCP server over stdio:
 uv run papertrail-agent-mcp
 ```
 
-The server exposes the same fixed surface:
+Other local inputs can be selected with `--map`, `--pdf`, and `--state`, or
+with `PAPERTRAIL_MAP`, `PAPERTRAIL_PDF`, and `PAPERTRAIL_AGENT_STATE`.
+
+## Architecture and MCP surface
+
+The MCP server exposes protocol components in the sense defined by the
+official MCP specifications for
+[Resources](https://modelcontextprotocol.io/specification/draft/server/resources),
+[Tools](https://modelcontextprotocol.io/specification/draft/server/tools), and
+[Prompts](https://modelcontextprotocol.io/specification/draft/server/prompts).
 
 - Resources: `paper_sections`, `current_highlights`, `current_agreement`,
   `session_info`
@@ -61,70 +76,101 @@ The server exposes the same fixed surface:
 - Prompts: `griswold_reading`, `grounded_qa`, `guided_reading`,
   `critical_analysis`, `paper_comparison`
 
-Set `PAPERTRAIL_MAP`, `PAPERTRAIL_PDF`, and `PAPERTRAIL_AGENT_STATE` to select
-other local files. `PAPERTRAIL_AGENT_API_KEY`, `PAPERTRAIL_AGENT_MODEL`, and
-optional `PAPERTRAIL_AGENT_BASE_URL` enable an OpenAI-compatible model. Without
-them, agreement build and refine use deterministic fallbacks that preserve the
-same no-rewrite invariant.
+The chat runner is deliberately client-side, not another MCP component. The
+CLI routes a turn, reads only the needed resources, calls tools, obtains the
+matching prompt, supplies the grounded context to the model, and validates
+the result.
+
+- Ask treats optional selected text as primary context and runs
+  `find_passages` only for supplementary evidence. The answer must cite
+  supplied quotes with section and page. With no evidence it returns, "The
+  paper does not directly address this."
+- Refine invokes `update_agreement` and displays its filtered highlight view.
+- Guide sends headings and current highlights, not the whole paper, then uses
+  `find_passages` for a few missing links. It returns an ordered reading path
+  plus a small suggested-question list.
 
 ## Agreement before and after
 
-For the focus:
+For this focus:
 
-> What problem does the paper solve and what is its main result?
+> I care about why they chose this dataset
 
-The former agreement behavior produced a prose paraphrase beginning:
+A paraphrase-style agreement might replace the user's text with:
 
-> You are looking for the core motivation of the research and the primary
-> claim the authors make about their success.
+> Identify and explain the authors' rationale for selecting the dataset used
+> in their evaluation.
 
-The standalone agent produces structured objectives whose `original_text`
-values are exact source spans:
+`build_agreement` instead requires an LLM to preserve user-authored spans and
+add expertise in separate fields:
 
 ```json
 {
+  "focus_raw": "I care about why they chose this dataset",
   "objectives": [
     {
-      "original_text": "What problem does the paper solve",
-      "extraction_guidance": {
-        "look_in": ["abstract", "introduction", "related work"],
-        "signals": ["however", "limitation", "fails to", "we ask", "challenge"],
-        "exclude": ["method details with no stated rationale", "results with no problem framing"],
-        "edge_cases": "Motivation can be implicit. Keep a passage only when the authors connect a prior limitation or practical need to the question they pursue."
-      }
-    },
-    {
-      "original_text": "and what is its main result?",
-      "extraction_guidance": {
-        "look_in": ["evaluation", "experiments", "results", "discussion"],
-        "signals": ["baseline", "compared with", "improves", "decreases", "ablation", "limitation"],
-        "exclude": ["experimental setup with no result", "unsupported performance claims"],
-        "edge_cases": "Keep the comparison conditions with the reported outcome."
-      }
+      "id": "obj1",
+      "source_text": "why they chose this dataset",
+      "facet": "evaluation",
+      "guidance": [
+        "dataset choice",
+        "dataset justification",
+        "dataset limitations"
+      ]
     }
   ]
 }
 ```
 
-Validation requires each objective to be an exact, ordered substring of the
-focus and requires all focus words to remain covered. A one-goal focus remains
-one objective. Griswold is available only through the opt-in
-`griswold_reading` prompt.
+Validation requires `focus_raw` to match the input byte for byte. Every
+`source_text` must be an exact, ordered substring, and the source spans must
+cover all substantive focus text. `facet` and `guidance` are system-added
+expertise and are intentionally not subject to substring validation. A
+single reading goal produces one objective; splitting is only for genuinely
+distinct goals. Griswold remains opt-in through `griswold_reading`.
 
-## Refine is filtering, not extraction
+There is no deterministic agreement fallback. A structurally invalid response
+gets one LLM regeneration attempt with the validation error; a missing key,
+failed call, or second invalid response is an explicit error.
 
-This project has no extraction model or highlighting pipeline. Therefore
-`update_agreement` cannot rerun extraction and cannot find new quotes. It:
+## Highlight enrichment and Refine
 
-1. changes only extraction guidance while freezing every `original_text`;
-2. applies new exclude rules to the existing Map JSON highlight pool;
-3. re-ranks the survivors and applies requests such as "only keep the top 5";
-4. stores the resulting visible highlight ids in local state.
+Map JSON highlights contain `quote`, `page`, `run_id`, `run_name`, `version`,
+`color`, `note`, `source`, and `verdict`; they do not contain a facet or
+salience score. After each successful agreement build, one disclosed LLM pass
+tags every existing highlight with an agreement objective/facet (or `other`)
+and a salience value from 0 to 1. Those tags are cached in local state and are
+exposed by `current_highlights`.
 
-Every tool result and filter report says `re_extracted: false`. This is the
-deliberate cost of making the demo fully isolated. Delete
-`.papertrail-agent-state.json` to reset the default fixture to its unfiltered
-highlight pool.
+This enrichment is not extraction. It classifies only the already exported
+highlight pool and never searches the PDF for new highlights.
+
+For Refine, the model has one limited job: translate the request into these
+operations:
+
+- `set_limit <N>`
+- `add_exclude <facet>` or `remove_exclude <facet>`
+- `enable_facet <id>` or `disable_facet <id>`
+- `change_density <facet> <low|medium|high>`
+
+State mutation, salience ranking, and filtering then run in deterministic
+Python over the cached tags. If a request introduces an uncached semantic
+criterion, such as `implementation_details`, one additional disclosed LLM
+pass labels the complete existing pool against that criterion. The labels are
+cached, so later refinements reuse them.
+
+Every update reports `re_extracted: false`. Refine can only narrow, restore,
+or reorder highlights from the original exported pool; it can never create or
+surface evidence that was absent from that pool.
+
+## Grounding limitation
+
+`find_passages` is deterministic keyword-overlap retrieval over recovered PDF
+text plus current highlights. It is the weakest grounding component: relevant
+passages with different wording can be missed. A future upgrade could use
+semantic retrieval while remaining reproducible under a fixed embedding
+model, index, corpus, and retrieval configuration. This demo does not build
+that upgrade.
 
 ## Tests
 
@@ -132,6 +178,8 @@ highlight pool.
 uv run pytest -q
 ```
 
-The tests verify exact focus preservation, deterministic refinement,
-highlight-pool filtering, PDF text recovery, the complete MCP surface, and the
-absence of runtime references to the sibling service source tree.
+Tests mock every LLM call, so they require no key or network. They cover
+verbatim source validation, the no-fallback error, full-pool tagging, fixed
+Refine operations, deterministic filtering, new-criterion caching, selected
+text grounding, guided reading, PDF recovery, the exact MCP surface, and the
+absence of runtime coupling to the sibling service.
